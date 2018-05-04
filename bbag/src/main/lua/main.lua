@@ -1,106 +1,126 @@
-bbag = {}
-
-bbag.tinsert = table.insert
-bbag.sfind = string.find
-
-bbag.main = function()
-  return nil
-end
-
-local defaultStorage = {}
-
-bbag.getStorage = function()
-  return defaultStorage
-end
-
-bbag.addItem = function(ownerName, itemName, itemsQuantity)
-end
-
-bbag.removeItem = function(ownerName, itemName, itemsQuantity)
-  return bbag.addItem(ownerName, itemName, -itemsQuantity)
-end
-
-bbag.getBagByOwner = function(ownerName)
-  local storage = getStorage()
-  local bag = storage[ownerName] or {}
-  return bag
-end
-
-bbag.getAllCategories = function()
+local function getItemConcept(itemId)
+  local infoName, infoLink, _, _, _, _, _, _, _ = GetItemInfo(itemId)
   return {
-    "Trade Goods", 
-    "Equipment", "Uncommon Equipment", "Rare Equipment", "Epic Equipment",
-    "Trash"
+  	id = itemId,
+    name = infoName,
+    link = infoLink
   }
 end
 
-bbag.getCategoryId = function(categoryName)
-  local result = 0 
-  local i = 1
-  local t = bbag.getAllCategories()
+local function unpackItemLink(givenLink)
+  -- http://wowwiki.wikia.com/wiki/ItemLink
+  local link = givenLink or ""
+  local _, _, Color, Ltype, Id, Enchant, Gem1, Gem2, Gem3, Gem4,
+    Suffix, Unique, LinkLvl, Name = string.find(link,
+    "|?c?f?f?(%x*)|?H?([^:]*):?(%d+):?(%d*):?(%d*):?(%d*):?(%d*):?(%d*):?(%-?%d*):?(%-?%d*):?(%d*):?(%d*):?(%-?%d*)|?h?%[?([^%[%]]*)%]?|?h?|?r?")
+  return {
+    id = Id or 0,
+    name = Name or ""
+  }
+end
 
-  for i, #t do
-    if t[i] == categoryName and t[i] ~= nil and t[i] ~= "" then
-      result = i
-    end
+local function getPlayerItem(containerId, slotId)
+  local result = nil
+  local _, infoCount, _, _, _, _, infoLink = GetContainerItemInfo(containerId, slotId)
+  if (infoCount or 0) > 0 then
+    local linkData = unpackItemLink(infoLink)
+    result = {
+  	  id = linkData.id,
+  	  name = linkData.name,
+      quantityInSlot = infoCount,
+      containerId = containerId,
+      slotId = slotId,
+      link = infoLink
+    }
   end
-
   return result
 end
 
-bbag.getCategoryName = function(categoryId)
-  local t = bbag.getAllCategories()
-  return t[categoryId] or ""
-end
+local function getPlayerItems()
+  local items = {}
+  local MAX_CONTAINERS = 16
+  local MAX_SLOTS_PER_CONTAINER = 128
 
-bbag.getItemCategoriesMap = function()
-  return {
-    ["Silk Cloth"] = {1}
-  }
-end
-
-bbag.getItemCategories = function(targetItemName)
-  local map = bbag.getItemCategoriesMap()
-  local result = map[targetItemName] or {}
-  return result 
-end
-
-bbag.predicateFactories = {}
-bbag.predicateFactories.itemName = function(targetItemName)
-  return function(filteredItem)
-    local nameMatches = false
-    local filteredItemName = filteredItem.name or nil
-    nameMatches = bbag.sfind(filteredItemName, targetItemName) ~= nil
-    return nameMatches
-  end
-end
-bbag.predicateFactories.anyCategory = function(givenCategories)
-  return function(filteredItem)
-    local result = false
-    local targetCategories = givenCategories or {}
-    local itemName = filteredItem.name or nil
-    local filteredItemCategories = bbag.getItemCategories(itemName) or {}
-    local i = 1
-    local j = 1
-    for i, #targetCategories do
-      for j, #filteredItemCategories do
-	result = targetCategories[i] == filteredItemCategories[j] or result 
+  for containerId = 0, MAX_CONTAINERS do
+    for slotId = 0, MAX_SLOTS_PER_CONTAINER do
+      local item = getPlayerItem(containerId, slotId)
+      if item ~= nil then
+        local prevItemQuantity = 0
+        if items[item.id] ~= nil and "table" == type(items[item.id]) then
+          prevItemQuantity = (items[item.id].quantity or 0)
+        end
+        item.quantity = item.quantityInSlot + prevItemQuantity
+        items[item.id] = item
       end
     end
-    return result
   end
+
+  return items 
 end
 
-bbag.getSubset = function(ownerName, predicate)
-  local subset = {}
-  local bag = bbag.getBagByOwner(ownerName) 
-  local i = 1
-  for i, #bag do
-    if predicate(bag[i]) then
-      bbag.tinsert(subset, bag[i])
+local function getReport(filter, sorter)
+  local report = {}
+ 
+  local items = getPlayerItems()  
+  if nil == filter then
+    filter = function(filteredItem)
+      return filteredItem ~= nil
     end
   end
-  return subset
+  for itemId, item in pairs(items) do
+    if filter(item) then
+      -- local itemConcept = getItemConcept(itemId)
+      tinsert(report, item)
+    end
+  end
+  
+  if nil == sorter then
+    sorter = function(a, b)
+      return (a.name or "") < (b.name or "")
+    end
+  end
+  table.sort(report, sorter)
+  
+  return report
 end
 
-return bbag
+--
+
+local function hide()
+end
+
+local function show()
+  local report = getReport()
+  local i = 1
+  print("--")
+  for i = 1, #report do
+    local entry = report[i] or nil
+    if entry ~= nil then
+      print(entry.link, "*", entry.quantity)
+    end
+  end
+  print("--")
+  return nil 
+end
+
+local function update()
+  return show()
+end
+
+local frame = CreateFrame("FRAME", "BBag")
+frame:RegisterEvent("BAG_CLOSED")
+frame:RegisterEvent("BAG_OPEN")
+frame:RegisterEvent("BAG_UPDATE")
+frame:RegisterEvent("ADDON_LOADED")
+frame:SetScript("OnEvent", function(self, event, containerId, ...)
+  if "BAG_CLOSED" == event and frame.loaded then
+    hide()
+  elseif "BAG_OPEN" == event and frame.loaded then
+    show()
+  elseif "BAG_UPDATE" == event and frame.loaded  then
+    update()
+  elseif "ADDON_LOADED" == event and not frame.loaded then
+    frame.loaded = true
+    show()
+  end
+end)
