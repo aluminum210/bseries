@@ -1,0 +1,57 @@
+plugins {
+  /* https://github.com/b3er/gradle-local-properties-plugin */
+  id "com.github.b3er.local.properties" version "1.1"
+}
+
+import org.apache.tools.ant.filters.FixCrLfFilter
+import org.apache.tools.ant.filters.ReplaceTokens
+
+subprojects {
+
+apply plugin: 'base'
+
+task('copyResources', type: Copy) {
+  from 'src/main/resources'
+  into "${buildDir}/tmp/${project.name}"
+
+  /* Work-around for multi-project builds. */
+  gradle.projectsEvaluated {
+    filter(FixCrLfFilter)
+    filter(ReplaceTokens, tokens: [version: project.version])
+    filteringCharset = 'UTF-8'
+  }
+}
+
+task('copySnippets', type: Copy) {
+  from 'src/main/lua'
+  into "${buildDir}/tmp/${project.name}"
+}
+
+task('distZip', type: Zip) {
+  from fileTree("${buildDir}/tmp/")
+  destinationDir file("${distsDir}")
+}
+
+
+task('deployLocal', type: Copy) {
+  /* Work-around for multi-project builds. */
+  gradle.projectsEvaluated {
+    from zipTree("${distsDir}/${distZip.archiveName}")
+    /* 
+     * `addonsDir` is defined in `local.properties` file. 
+     * Example:
+     * local.properties:
+     *   addonsDir=D:/games/wow/Interface/AddOns/
+     */   
+    into addonsDir
+  }
+}
+
+distZip.mustRunAfter(copySnippets)
+distZip.mustRunAfter(copyResources)
+deployLocal.mustRunAfter(assemble)
+assemble.dependsOn(copySnippets)
+assemble.dependsOn(copyResources)
+assemble.dependsOn(distZip)
+
+}
