@@ -1,9 +1,11 @@
 local function getItemConcept(itemId)
-  local infoName, infoLink, _, _, _, _, _, _, _ = GetItemInfo(itemId)
+  local infoName, infoLink, _, _, infoType, infoCategory, _, texture, _ = GetItemInfo(itemId)
   return {
   	id = itemId,
     name = infoName,
-    link = infoLink
+    link = infoLink,
+    class = infoType,
+    category = infoCategory
   }
 end
 
@@ -24,12 +26,15 @@ local function getPlayerItem(containerId, slotId)
   local _, infoCount, _, _, _, _, infoLink = GetContainerItemInfo(containerId, slotId)
   if (infoCount or 0) > 0 then
     local linkData = unpackItemLink(infoLink)
+    local concept = getItemConcept(linkData.id)
     result = {
-  	  id = linkData.id,
-  	  name = linkData.name,
+  	  id = concept.id,
+  	  name = concept.name,
       quantityInSlot = infoCount,
       containerId = containerId,
       slotId = slotId,
+      class = concept.class,
+      category = concept.category,
       link = infoLink
     }
   end
@@ -85,42 +90,116 @@ local function getReport(filter, sorter)
 end
 
 --
+local frame = CreateFrame("FRAME", "BBag", UIParent)
+frame:SetWidth(512)
+frame:SetHeight(640)
+frame:SetBackdrop(StaticPopup1:GetBackdrop())
+frame:SetPoint("CENTER", UIParent)
+
+frame.column1 = frame:CreateFontString("BBagColumn1", "OVERLAY")
+frame.column1:SetWidth(frame:GetWidth() * 0.64)
+frame.column1:SetHeight(frame:GetHeight())
+frame.column1:SetPoint("RIGHT", frame, "LEFT", frame.column1:GetWidth(), 0)
+frame.column1:SetPoint("TOP", frame, "TOP", 0, 0)
+frame.column1:SetPoint("LEFT", frame, "LEFT", 0, 0)
+frame.column1:SetPoint("BOTTOM", frame, "BOTTOM", 0, 0)
+-- The main font, the roundish one, is called Friz Quadrata. 
+-- The one used in the chat window is Arial Narrow. 
+-- The one used for in-game mail is Morpheus. The damage font is Skurri.
+-- ARIALN.ttf
+-- FRIZQT__.ttf
+-- MORPHEUS.ttf
+-- SKURRI.ttf
+frame.column1:SetFont("Fonts\\FRIZQT__.TTF", 16)
+frame.column1:SetWordWrap(true)
+frame.column1:Show()
+
+frame.column2 = frame:CreateFontString("BBagColumn2", "OVERLAY")
+frame.column2:SetWidth(frame:GetWidth() * 0.33)
+frame.column2:SetHeight(frame:GetHeight())
+frame.column2:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
+frame.column2:SetPoint("TOP", frame, "TOP", 0, 0)
+frame.column2:SetPoint("LEFT", frame.column1, "RIGHT", 0, 0)
+frame.column2:SetPoint("BOTTOM", frame, "BOTTOM", 0, 0)
+frame.column2:SetFont("Fonts\\FRIZQT__.TTF", 16)
+frame.column2:SetWordWrap(true)
+frame.column2:Show()
+
+frame:Hide()
 
 local function hide()
+  frame:Hide()
 end
 
 local function show()
-  local report = getReport()
-  local i = 1
-  print("--")
-  for i = 1, #report do
-    local entry = report[i] or nil
-    if entry ~= nil then
-      print(entry.link, "*", entry.quantity)
+  if frame.isAddonLoaded then
+    local report = getReport()
+    
+    local groups = {}
+    for i = 1, #report do
+      local entry = report[i] or nil
+      if entry ~= nil then
+        if nil == groups[entry.category] then 
+          groups[entry.category] = {}
+        end
+        tinsert(groups[entry.category], entry)
+      end
     end
-  end
-  print("--")
-  return nil 
+    
+    local col1 = ""
+    local col2 = ""
+    for groupName, items in pairs(groups) do
+      col1 = col1 .. "|n" .. groupName .. ":|n"
+      col2 = col2 .. "|n|n"
+      for j = 1, #items do
+        local item = items[j]
+        col1 = col1 .. item.link .. "|n"
+        col2 = col2 .. item.quantity .. "|n"
+      end
+    end
+    frame.column1:SetText(col1)
+    frame.column2:SetText(col2)
+    frame:Show()
+  end 
 end
 
 local function update()
-  return show()
+  show()
 end
 
-local frame = CreateFrame("FRAME", "BBag")
 frame:RegisterEvent("BAG_CLOSED")
 frame:RegisterEvent("BAG_OPEN")
 frame:RegisterEvent("BAG_UPDATE")
 frame:RegisterEvent("ADDON_LOADED")
 frame:SetScript("OnEvent", function(self, event, containerId, ...)
-  if "BAG_CLOSED" == event and frame.loaded then
+  if "BAG_CLOSED" == event then
     hide()
-  elseif "BAG_OPEN" == event and frame.loaded then
+  elseif "BAG_OPEN" == event then
     show()
-  elseif "BAG_UPDATE" == event and frame.loaded  then
+  elseif "BAG_UPDATE" == event then
     update()
-  elseif "ADDON_LOADED" == event and not frame.loaded then
-    frame.loaded = true
+  elseif "ADDON_LOADED" == event then
+    frame.isAddonLoaded = true
+  end
+end)
+
+hooksecurefunc('CloseBackpack', function()
+  hide()
+end)
+hooksecurefunc('CloseAllBags', function()
+  hide()
+end)
+hooksecurefunc('CloseAllWindows', function()
+  hide()
+end)
+hooksecurefunc('OpenBag', function()
+  show()
+end)
+hooksecurefunc('ToggleBag', function()
+  if frame:IsShown() then
+    hide()
+  else
     show()
   end
 end)
+--MacroPopupFrame:HookScript("OnHide", MyFunction)
