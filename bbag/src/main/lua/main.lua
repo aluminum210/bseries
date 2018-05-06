@@ -63,7 +63,7 @@ local function getPlayerItems()
   return items 
 end
 
-local function getReport(filter, sorter)
+local function newReport(filter, sorter)
   local report = {}
  
   local items = getPlayerItems()  
@@ -91,115 +91,257 @@ end
 
 --
 local frame = CreateFrame("FRAME", "BBag", UIParent)
-frame:SetWidth(512)
-frame:SetHeight(640)
-frame:SetBackdrop(StaticPopup1:GetBackdrop())
-frame:SetPoint("CENTER", UIParent)
-
-frame.column1 = frame:CreateFontString("BBagColumn1", "OVERLAY")
-frame.column1:SetWidth(frame:GetWidth() * 0.64)
-frame.column1:SetHeight(frame:GetHeight())
-frame.column1:SetPoint("RIGHT", frame, "LEFT", frame.column1:GetWidth(), 0)
-frame.column1:SetPoint("TOP", frame, "TOP", 0, 0)
-frame.column1:SetPoint("LEFT", frame, "LEFT", 0, 0)
-frame.column1:SetPoint("BOTTOM", frame, "BOTTOM", 0, 0)
--- The main font, the roundish one, is called Friz Quadrata. 
--- The one used in the chat window is Arial Narrow. 
--- The one used for in-game mail is Morpheus. The damage font is Skurri.
--- ARIALN.ttf
--- FRIZQT__.ttf
--- MORPHEUS.ttf
--- SKURRI.ttf
-frame.column1:SetFont("Fonts\\FRIZQT__.TTF", 16)
-frame.column1:SetWordWrap(true)
-frame.column1:Show()
-
-frame.column2 = frame:CreateFontString("BBagColumn2", "OVERLAY")
-frame.column2:SetWidth(frame:GetWidth() * 0.33)
-frame.column2:SetHeight(frame:GetHeight())
-frame.column2:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
-frame.column2:SetPoint("TOP", frame, "TOP", 0, 0)
-frame.column2:SetPoint("LEFT", frame.column1, "RIGHT", 0, 0)
-frame.column2:SetPoint("BOTTOM", frame, "BOTTOM", 0, 0)
-frame.column2:SetFont("Fonts\\FRIZQT__.TTF", 16)
-frame.column2:SetWordWrap(true)
-frame.column2:Show()
 
 frame:Hide()
+
+local function update()
+  local report = newReport()
+    
+  local groups = {}
+  for i = 1, #report do
+    local entry = report[i] or nil
+    if entry ~= nil then
+      if nil == groups[entry.category] then 
+        groups[entry.category] = {}
+      end
+      tinsert(groups[entry.category], entry)
+    end
+  end
+    
+  local col1 = ""
+  local col2 = ""
+  for groupName, items in pairs(groups) do
+    col1 = col1 .. "|n" .. groupName .. ":|n"
+    col2 = col2 .. "|n|n"
+    for j = 1, #items do
+      local item = items[j]
+      col1 = col1 .. item.link .. "|n"
+      col2 = col2 .. item.quantity .. "|n"
+    end
+  end
+  frame.column1:SetText(col1)
+  frame.column2:SetText(col2)
+  frame.upToDate = true
+end
+
+local function updateIfNecessary()
+  if frame:IsVisible() then
+	update()
+  end
+end
 
 local function hide()
   frame:Hide()
 end
 
-local function show()
-  if frame.isAddonLoaded then
-    local report = getReport()
-    
-    local groups = {}
-    for i = 1, #report do
-      local entry = report[i] or nil
-      if entry ~= nil then
-        if nil == groups[entry.category] then 
-          groups[entry.category] = {}
-        end
-        tinsert(groups[entry.category], entry)
-      end
-    end
-    
-    local col1 = ""
-    local col2 = ""
-    for groupName, items in pairs(groups) do
-      col1 = col1 .. "|n" .. groupName .. ":|n"
-      col2 = col2 .. "|n|n"
-      for j = 1, #items do
-        local item = items[j]
-        col1 = col1 .. item.link .. "|n"
-        col2 = col2 .. item.quantity .. "|n"
-      end
-    end
-    frame.column1:SetText(col1)
-    frame.column2:SetText(col2)
-    frame:Show()
-  end 
-end
-
-local function update()
-  show()
-end
-
-frame:RegisterEvent("BAG_CLOSED")
-frame:RegisterEvent("BAG_OPEN")
-frame:RegisterEvent("BAG_UPDATE")
-frame:RegisterEvent("ADDON_LOADED")
-frame:SetScript("OnEvent", function(self, event, containerId, ...)
-  if "BAG_CLOSED" == event then
-    hide()
-  elseif "BAG_OPEN" == event then
-    show()
-  elseif "BAG_UPDATE" == event then
-    update()
-  elseif "ADDON_LOADED" == event then
-    frame.isAddonLoaded = true
+local function checkIfAllBagsAreClosed()
+  local allBagsClosed = true
+  for containerId, containerState in pairs(frame.containersStateCache) do
+    print("containerId", containerId, "containerState", containerState)
+    allBagsClosed = not containerState and allBagsClosed
   end
-end)
+  print('checkIfAllBagsAreClosed', allBagsClosed)
+  return allBagsClosed
+end
 
-hooksecurefunc('CloseBackpack', function()
-  hide()
-end)
-hooksecurefunc('CloseAllBags', function()
-  hide()
-end)
-hooksecurefunc('CloseAllWindows', function()
-  hide()
-end)
-hooksecurefunc('OpenBag', function()
-  show()
-end)
-hooksecurefunc('ToggleBag', function()
-  if frame:IsShown() then
+local function hideIfNecessary()
+  local allBagsClosed = checkIfAllBagsAreClosed() 
+  if allBagsClosed then
+    hide()
+  end
+end
+
+-- Show and update if necessary.
+local function show(...)
+  print('show', ...)
+  frame:Show()
+  if not (frame.upToDate or false) then
+    update()
+  end
+end
+
+local function toggle()
+  if frame:IsVisible() then
     hide()
   else
     show()
+  end 
+end
+
+local function toggleIfNecessary()
+  local allBagsClosed = checkIfAllBagsAreClosed()
+  local someBagsAreOpen = not allBagsAreClosed
+  if frame:IsVisible() and allBagsClosed then
+    hide()
+  elseif not frame:IsVisible() and someBagsAreOpen then
+    show()
   end
-end)
+end
+
+local function bagClosed(containerId)
+  if containerId then
+    frame.containersStateCache[containerId] = false
+  end
+end
+
+local function backpackClosed()
+  bagClosed(0)
+end
+
+local function bagOpened(containerId)
+  if containerId then
+    frame.containersStateCache[containerId] = true
+  end
+end
+
+local function backpackOpened()
+  bagOpened(0)
+end
+
+local function allClosed()
+  backpackClosed()
+  bagClosed(1)
+  bagClosed(2)
+  bagClosed(3)
+  bagClosed(4)
+end
+
+local function allOpened()
+  backpackOpened()
+  bagOpened(1)
+  bagOpened(2)
+  bagOpened(3)
+  bagOpened(4)
+end
+
+local function bagToggled(containerId)
+  if containerId then
+    frame.containersStateCache[containerId] = not frame.containersStateCache[containerId]
+  end
+end
+
+local function backpackToggled()
+  bagToggled(0)
+end
+
+local function init()
+  frame:UnregisterAllEvents()
+  frame.upToDate = false
+  frame.containersStateCache = {}
+  
+  local FONT_SIZE = 16
+  
+  frame:SetWidth(512)
+  frame:SetHeight(640)
+  frame:SetBackdrop(StaticPopup1:GetBackdrop())
+  frame:SetPoint("CENTER", UIParent)
+	
+  frame.column1 = frame:CreateFontString("BBagColumn1", "OVERLAY")
+  frame.column1:SetWidth(frame:GetWidth() * 0.64)
+  frame.column1:SetHeight(frame:GetHeight())
+  frame.column1:SetPoint("RIGHT", frame, "LEFT", frame.column1:GetWidth(), 0)
+  frame.column1:SetPoint("TOP", frame, "TOP", 0, 0)
+  frame.column1:SetPoint("LEFT", frame, "LEFT", 0, 0)
+  frame.column1:SetPoint("BOTTOM", frame, "BOTTOM", 0, 0)
+	-- The main font, the roundish one, is called Friz Quadrata. 
+	-- The one used in the chat window is Arial Narrow. 
+	-- The one used for in-game mail is Morpheus. The damage font is Skurri.
+	-- ARIALN.ttf
+	-- FRIZQT__.ttf
+	-- MORPHEUS.ttf
+	-- SKURRI.ttf
+  frame.column1:SetFont("Fonts\\FRIZQT__.TTF", FONT_SIZE)
+  frame.column1:SetWordWrap(true)
+  frame.column1:Show()
+	
+  frame.column2 = frame:CreateFontString("BBagColumn2", "OVERLAY")
+  frame.column2:SetWidth(frame:GetWidth() * 0.33)
+  frame.column2:SetHeight(frame:GetHeight())
+  frame.column2:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
+  frame.column2:SetPoint("TOP", frame, "TOP", 0, 0)
+  frame.column2:SetPoint("LEFT", frame.column1, "RIGHT", 0, 0)
+  frame.column2:SetPoint("BOTTOM", frame, "BOTTOM", 0, 0)
+  frame.column2:SetFont("Fonts\\FRIZQT__.TTF", FONT_SIZE)
+  frame.column2:SetWordWrap(true)
+  frame.column2:Show()
+
+  hooksecurefunc('CloseAllBags', function()
+    allClosed()
+    hide()
+  end)
+  hooksecurefunc('CloseAllWindows', hide)
+  hooksecurefunc('CloseBackpack', function(...) 
+    print('CloseBackpack', ...)
+    backpackClosed()
+    hideIfNecessary()
+  end)
+  hooksecurefunc('CloseBag', function(containerId) 
+    print('CloseBag', containerId)
+    bagClosed(containerId + 1)
+    hideIfNecessary()
+  end)
+  
+  hooksecurefunc('OpenAllBags', function()
+    print('OpenAllBags')
+    allOpened()
+    show()
+  end)
+  hooksecurefunc('OpenBackpack', function(containerId)
+    print('OpenBackpack', containerId)
+    backpackOpened()
+    show()
+  end)
+  hooksecurefunc('OpenBag', function(containerId)
+    print('OpenBag', containerId)
+    bagOpened(containerId)
+    show()
+  end)
+  
+  hooksecurefunc('ToggleBackpack', function(containerId)
+    print('ToggleBackpack', containerId)
+    backpackToggled()
+    toggleIfNecessary()
+  end)
+  hooksecurefunc('ToggleBag', function(containerId)
+    print('ToggleBag', containerId)
+    -- ToggleBag(0) clashes with ToggleBackpack, hence the workaround.
+    -- Both ToggleBag(0) and ToggleBackpack are called when opening backpack (with smart action??).
+    -- Only ToggleBackpack is called when closing backpack with smart action.
+    -- Only ToggleBag(0) is called when closing backpack with cross button.
+    local normalBagAndNotBackpack = containerId ~= 0
+    local backpackAndNotNormalBag = 0 == containerId
+    local closed = not frame.containersStateCache[containerId] or false
+    local opened = frame.containersStateCache[containerId] or false
+    if normalBagAndNotBackpack then
+      bagToggled(containerId)
+      toggleIfNecessary()
+    elseif backpackAndNotNormalBag and opened then
+      backpackClosed()
+      hideIfNecessary()
+    end
+  end)
+	
+  frame:RegisterEvent("BAG_CLOSED")
+  frame:RegisterEvent("BAG_OPEN")
+  frame:RegisterEvent("BAG_UPDATE")
+    
+  frame:SetScript("OnEvent", function(self, event, containerId, ...)
+    print('OnEvent', event, containerId, ...)
+    local containerClosed = false
+    local containerOpened = true
+	if "BAG_CLOSED" == event then
+	  bagClosed(containerId)
+	  hideIfNecessary()
+	elseif "BAG_OPEN" == event then
+	  bagOpened(containerId)
+	  show()
+	elseif "BAG_UPDATE" == event then
+	  frame.upToDate = false
+	  updateIfNecessary()
+	end
+  end)
+end
+
+frame:RegisterEvent("ADDON_LOADED")
+frame:SetScript("OnEvent", init)
 --MacroPopupFrame:HookScript("OnHide", MyFunction)
