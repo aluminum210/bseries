@@ -1,4 +1,4 @@
-bbag.init = function(bbag)
+bbag.init = function(bbag)  
   bbag.upToDate = false
   
   -- The order is relevant.
