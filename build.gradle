@@ -24,9 +24,11 @@ task('copyResources', type: Copy) {
 }
 
 task('copySnippets', type: Copy) {
+  println('Copying...')
+  into "${buildDir}/tmp/${project.name}"
   from 'src/main/lua'
   exclude "**/*~"
-  into "${buildDir}/tmp/${project.name}"
+  include "**/*.lua"
 }
 
 task('distZip', type: Zip) {
@@ -49,6 +51,10 @@ task('deployLocal', type: Copy) {
   }
 }
 
+copySnippets.shouldRunAfter(clean)
+copyResources.shouldRunAfter(clean)
+distZip.shouldRunAfter(clean)
+assemble.shouldRunAfter(clean)
 distZip.mustRunAfter(copySnippets)
 distZip.mustRunAfter(copyResources)
 deployLocal.mustRunAfter(assemble)

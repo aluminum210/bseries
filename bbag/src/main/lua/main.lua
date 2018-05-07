@@ -9,3 +9,5 @@ frame:SetScript("OnEvent", function(self, event, ...)
   bbag.init(bbag)
 end)
 --MacroPopupFrame:HookScript("OnHide", MyFunction)
+
+return frame
