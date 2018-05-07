@@ -1,4 +1,4 @@
-bbag = {}
+local bbag = {}
 bbag.isDebugEnabled = true
 bbag.debug = function(...)
   if bbag.isDebugEnabled then
