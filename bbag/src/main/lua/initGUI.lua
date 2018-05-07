@@ -1,71 +1,136 @@
 bbag.initGUI = function(bbag)
   local frame = bbag.frame
-  local FONT_SIZE = 16
   
   frame:SetWidth(512)
   frame:SetHeight(640)
   frame:SetBackdrop(StaticPopup1:GetBackdrop())
   frame:SetPoint("CENTER", UIParent)
-	
-  frame.column1 = frame:CreateFontString("BBagColumn1", "OVERLAY")
-  frame.column1:SetWidth(frame:GetWidth() * 0.64)
-  frame.column1:SetHeight(frame:GetHeight())
-  frame.column1:SetPoint("RIGHT", frame, "LEFT", frame.column1:GetWidth(), 0)
-  frame.column1:SetPoint("TOP", frame, "TOP", 0, 0)
-  frame.column1:SetPoint("LEFT", frame, "LEFT", 0, 0)
-  frame.column1:SetPoint("BOTTOM", frame, "BOTTOM", 0, 0)
-	-- The main font, the roundish one, is called Friz Quadrata. 
-	-- The one used in the chat window is Arial Narrow. 
-	-- The one used for in-game mail is Morpheus. The damage font is Skurri.
-	-- ARIALN.ttf
-	-- FRIZQT__.ttf
-	-- MORPHEUS.ttf
-	-- SKURRI.ttf
-  frame.column1:SetFont("Fonts\\FRIZQT__.TTF", FONT_SIZE)
-  frame.column1:SetWordWrap(true)
-  frame.column1:Show()
-	
-  frame.column2 = frame:CreateFontString("BBagColumn2", "OVERLAY")
-  frame.column2:SetWidth(frame:GetWidth() * 0.33)
-  frame.column2:SetHeight(frame:GetHeight())
-  frame.column2:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
-  frame.column2:SetPoint("TOP", frame, "TOP", 0, 0)
-  frame.column2:SetPoint("LEFT", frame.column1, "RIGHT", 0, 0)
-  frame.column2:SetPoint("BOTTOM", frame, "BOTTOM", 0, 0)
-  frame.column2:SetFont("Fonts\\FRIZQT__.TTF", FONT_SIZE)
-  frame.column2:SetWordWrap(true)
-  frame.column2:Show()
+  
+  local groupTabFrames = {}
+  -- https://wow.gamepedia.com/ItemType
+  local groupNames = {
+    "Armor", "Consumable", "Container", "Gem",
+    "Key", "Miscellaneous", "Money", "Reagent",
+    "Recipe", "Projectile", "Quest", "Quiver",
+    "Trade Goods", "Weapon"
+  }
+  local tabsFrame = CreateFrame("FRAME", "BBagGroupTabs", frame)
+  tabsFrame:SetWidth(frame:GetWidth())
+  tabsFrame:SetHeight(32*5)
+  tabsFrame:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
+  tabsFrame:SetPoint("TOP", frame, "TOP", 0, 0)
+  tabsFrame:SetPoint("LEFT", frame, "LEFT", 0, 0)
+  tabsFrame:SetPoint("BOTTOM", frame, "TOP", 0, -tabsFrame:GetHeight())
+  tabsFrame:Show()
+  local i = 0
+  for row = 0, 3 do
+    for column = 0, 3 do
+      i = i + 1
+      if i > #groupNames then
+        break
+      end
+      local groupTabFrame = CreateFrame("BUTTON", "BBagGroupTab"..i, tabsFrame, "UIPanelButtonTemplate")
+      groupTabFrame:SetWidth(128)
+      groupTabFrame:SetHeight(32)
+      groupTabFrame:SetPoint("RIGHT", tabsFrame, "LEFT", groupTabFrame:GetWidth()*(column+1), 0)
+      groupTabFrame:SetPoint("TOP", tabsFrame, "TOP", 0, -groupTabFrame:GetHeight()*row)
+      groupTabFrame:SetPoint("LEFT", tabsFrame, "LEFT", groupTabFrame:GetWidth()*column, 0)
+      groupTabFrame:SetPoint("BOTTOM", tabsFrame, "TOP", 0, -groupTabFrame:GetHeight()*(row+1))
+      groupTabFrame.text = _G[groupTabFrame:GetName().."Text"]
+      local groupName = groupNames[i] or "Consumable"
+      groupTabFrame.text:SetText(groupName)
+      groupTabFrame:SetScript('OnClick', function(self, event, ...)
+        frame.selectedGroup = groupName
+        bbag.upToDate = false
+        bbag.updateIfNecessary(frame)
+      end)
+      groupTabFrame:Show()
+      groupTabFrames[i] = groupTabFrame
+    end
+  end
+  frame.tabsFrame = tabsFrame
+  frame.tabsFrame.groupTabFrames = groupTabFrames
+  
+  local entryFrames = {}
+  local entriesFrame = CreateFrame("FRAME", "BBagEntries", frame)
+  entriesFrame:SetWidth(frame:GetWidth())
+  entriesFrame:SetHeight(frame:GetHeight()-tabsFrame:GetHeight())
+  entriesFrame:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
+  entriesFrame:SetPoint("TOP", frame, "TOP", 0, -tabsFrame:GetHeight())
+  entriesFrame:SetPoint("LEFT", frame, "LEFT", 0, 0)
+  entriesFrame:SetPoint("BOTTOM", frame, "BOTTOM", 0, 0)
+  entriesFrame:Show()
+  for j = 1, 32 do
+    local entryFrame = CreateFrame("FRAME", "BBagEntry"..j, entriesFrame)
+    entryFrame:SetWidth(entriesFrame:GetWidth())
+    entryFrame:SetHeight(16)
+    entryFrame:SetPoint("RIGHT", entriesFrame, "RIGHT", 0, 0)
+    entryFrame:SetPoint("TOP", entriesFrame, "TOP", 0, -entryFrame:GetHeight()*(j-1))
+    entryFrame:SetPoint("LEFT", entriesFrame, "LEFT", 0, 0)
+    entryFrame:SetPoint("BOTTOM", entriesFrame, "TOP", 0, -entryFrame:GetHeight()*j)
+    
+    local fieldIco = CreateFrame("FRAME", entryFrame:GetName().."Icon", entryFrame)
+    fieldIco:SetWidth(16)
+    fieldIco:SetHeight(entryFrame:GetHeight())
+    fieldIco:SetPoint("RIGHT", entryFrame, "LEFT", fieldIco:GetWidth(), 0)
+    fieldIco:SetPoint("TOP", entryFrame, "TOP", 0, 0)
+    fieldIco:SetPoint("LEFT", entryFrame, "LEFT", 0, 0)
+    fieldIco:SetPoint("BOTTOM", entryFrame, "BOTTOM", 0, 0)
+    fieldIco:Show()
+    entryFrame.fieldIco = fieldIco
+    
+    local fieldQuantityWidth = 64
+    local fieldName = entryFrame:CreateFontString(entryFrame:GetName().."Name", "OVERLAY", "GameFontNormalLargeLeft")
+    -- fieldName:SetFont("Fonts\\FRIZQT__.TTF", entryFrame:GetHeight())
+    fieldName:SetWidth(entriesFrame:GetWidth()-fieldQuantityWidth-fieldIco:GetWidth())
+    fieldName:SetHeight(entryFrame:GetHeight())
+    fieldName:SetPoint("RIGHT", entryFrame, "LEFT", fieldIco:GetWidth()+fieldName:GetWidth(), 0)
+    fieldName:SetPoint("TOP", entryFrame, "TOP", 0, 0)
+    fieldName:SetPoint("LEFT", entryFrame, "LEFT", fieldIco:GetWidth(), 0)
+    fieldName:SetPoint("BOTTOM", entryFrame, "BOTTOM", 0, 0)
+    fieldName:Show()
+    entryFrame.fieldName = fieldName
+    
+    local fieldQuantity = entryFrame:CreateFontString(entryFrame:GetName().."Quantity", "OVERLAY", "GameFontNormalLarge")
+    -- fieldQuantity:SetFont("Fonts\\FRIZQT__.TTF", entryFrame:GetHeight())
+    fieldQuantity:SetWidth(fieldQuantityWidth)
+    fieldQuantity:SetHeight(entryFrame:GetHeight())
+    fieldQuantity:SetPoint("RIGHT", entryFrame, "LEFT", fieldIco:GetWidth()+fieldName:GetWidth()+fieldQuantity:GetWidth(), 0)
+    fieldQuantity:SetPoint("TOP", entryFrame, "TOP", 0, 0)
+    fieldQuantity:SetPoint("LEFT", entryFrame, "LEFT", fieldIco:GetWidth()+fieldName:GetWidth(), 0)
+    fieldQuantity:SetPoint("BOTTOM", entryFrame, "BOTTOM", 0, 0)
+    fieldQuantity:Show()
+    entryFrame.fieldQuantity = fieldQuantity
+    
+    entryFrame:Show()
+    entryFrames[j] = entryFrame
+  end
+  frame.entriesFrame = entriesFrame
+  frame.entriesFrame.entryFrames = entryFrames
   
 bbag.update = function(givenFrame)
   givenFrame = givenFrame or bbag.frame
-  local report = bbag.newReport()
-    
-  local groups = {}
-  for i = 1, #report do
-    local entry = report[i] or nil
+  local targetCategory = givenFrame.selectedGroup
+  if nil == targetCategory then
+    targetCategory = "Consumable"
+  end 
+  local filter = bbag.filterFactories.filterCategory(targetCategory)
+  local report = bbag.newReport(filter)
+  for i = 1, #givenFrame.entriesFrame.entryFrames do
+    local entry = report[i]
+    local n = nil
+    local q = nil
     if entry ~= nil then
-      if nil == groups[entry.category] then 
-        groups[entry.category] = {}
-      end
-      tinsert(groups[entry.category], entry)
+      n = entry.name
+      q = entry.quantity
     end
-  end
     
-  local col1 = ""
-  local col2 = ""
-  for groupName, items in pairs(groups) do
-    col1 = col1 .. "|n" .. groupName .. ":|n"
-    col2 = col2 .. "|n|n"
-    for j = 1, #items do
-      local item = items[j]
-      col1 = col1 .. item.link .. "|n"
-      col2 = col2 .. item.quantity .. "|n"
-    end
+    local entryFrame = givenFrame.entriesFrame.entryFrames[i]
+    entryFrame.fieldName:SetText(n)
+    entryFrame.fieldQuantity:SetText(q)
+    entryFrame:Show()
   end
-  givenFrame.column1:SetText(col1)
-  givenFrame.column2:SetText(col2)
-  givenFrame.column1:Show()
-  givenFrame.column2:Show()
+  
   bbag.upToDate = true
 end
 
@@ -87,7 +152,6 @@ bbag.checkIfAllBagsAreClosed = function()
     not ContainerFrame3:IsVisible() and
     not ContainerFrame4:IsVisible() and
     not ContainerFrame5:IsVisible()
-  bbag.debug("allBagsClosed", allBagsClosed)
   return allBagsClosed
 end
 
@@ -127,5 +191,4 @@ bbag.toggleIfNecessary = function(givenFrame)
     bbag.show(givenFrame)
   end
 end
-
 end

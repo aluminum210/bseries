@@ -49,6 +49,13 @@ bbag.requestPlayerItem = function(containerId, slotId)
   return result
 end
 
+bbag.filterFactories = {}
+bbag.filterFactories.filterCategory = function(targetCategory)
+  return function(filteredItem)
+    return filteredItem ~= nil and targetCategory == filteredItem.category 
+  end
+end
+
 -- Request game server for data on items that the local player owns.
 -- Then apply given filter and do basic processing (aggregation),
 -- that is converting the data to the addon's preferred (internal) representation.
