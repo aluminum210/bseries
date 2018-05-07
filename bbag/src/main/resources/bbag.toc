@@ -2,4 +2,9 @@
 ## Title: BBag
 ## Description: Minimalist inventory management add-on.
 ## Version: @version@
+bbag.lua
+initHooks.lua
+initGUI.lua
+initEventHandler.lua
+init.lua
 main.lua
