@@ -12,6 +12,7 @@ apply plugin: 'base'
 
 task('copyResources', type: Copy) {
   from 'src/main/resources'
+  exclude "**/*~"
   into "${buildDir}/tmp/${project.name}"
 
   /* Work-around for multi-project builds. */
@@ -24,6 +25,7 @@ task('copyResources', type: Copy) {
 
 task('copySnippets', type: Copy) {
   from 'src/main/lua'
+  exclude "**/*~"
   into "${buildDir}/tmp/${project.name}"
 }
 
