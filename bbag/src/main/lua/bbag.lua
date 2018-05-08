@@ -67,18 +67,37 @@ bbag.requestPlayerItems = function(filter)
   end
   
   local items = {}
-  local MAX_CONTAINERS = 16
-  local MAX_SLOTS_PER_CONTAINER = 128
+  local BAGS = {
+  	  --[[http://wowwiki.wikia.com/wiki/BagId Backpack and bags.]]--
+  	  0, 1, 2, 3, 4,
+  	  --[[Keyring and tokens.]]--
+  	  -2, -4
+  }
+  --[[ TODO Substitude BAGS with BANK when desired. ]]--
+  local BANK = {
+  	  -1, 5, 6, 7, 8, 9, 10, 11
+  }
+  local MAX_SLOTS_PER_CONTAINER = 36
 
-  for containerId = 0, MAX_CONTAINERS do
-    for slotId = 0, MAX_SLOTS_PER_CONTAINER do
+  for i = 1, #BAGS do
+    local containerId = BAGS[i]
+    for slotId = 1, MAX_SLOTS_PER_CONTAINER do
       local item = bbag.requestPlayerItem(containerId, slotId)
       if item ~= nil and filter(item) then
         local prevItemQuantity = 0
-        if items[item.id] ~= nil and "table" == type(items[item.id]) then
-          prevItemQuantity = (items[item.id].quantity or 0)
+        --[[ Avoid possible override. ]]--
+        local thisQuantityInSlot = item.quantityInSlot
+        if items[item.id] ~= nil then 
+          prevItemQuantity = items[item.id].quantity
+        --[[ Save data on the smallest stack of the item,
+             to later use on item usage requests. ]]--
+          if items[item.id].quantityInSlot < item.quantityInSlot then
+            item.quantityInSlot = items[item.id].quantityInSlot
+            item.containerId = items[item.id].containerId
+            item.slotId = items[item.id].slotId
+          end
         end
-        item.quantity = item.quantityInSlot + prevItemQuantity
+        item.quantity = thisQuantityInSlot + prevItemQuantity
         items[item.id] = item
       end
     end
