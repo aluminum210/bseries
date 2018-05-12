@@ -1,0 +1,6 @@
+﻿## Interface: 30300
+## Title: BQuest
+## Description: Custom quests or glorified to-do list addon.
+## SavedVariablesPerCharacter: BQuestSavedVariables
+## Version: @version@
+main.lua

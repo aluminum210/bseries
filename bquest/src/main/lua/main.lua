@@ -1,3 +1,8 @@
+--[[ Constants. ]]--
+local MAX_QUEST_FRAMES = 8
+local MAX_ATTRIBUTES = 8
+local MAX_QUESTS = 256
+
 --[[ Core: quests. ]]--
 
 local getSupportedQuestGoals = function()
@@ -118,7 +123,6 @@ end
 local isValidQuest = function(givenQuest)
   assert("table" == type(givenQuest))
   
-  local MAX_ATTRIBUTES = 8
   local attributesQuantity = 0
   local optionalErrorMessage = nil
   local result = true
@@ -190,7 +194,7 @@ local createQuest = function(questPrototype)
   
   newQuest.createdDateTable = date("*t")
   local d = newQuest.createdDateTable
-  newQuest.questId = math.ceil(d.year .. d.month .. d.day .. string.format('%04d', math.random(1, 9999)))
+  newQuest.questId = math.ceil(string.format('%04d%02d%02d%04d', d.year, d.month, d.day, math.random(1, 9999)))
   
   if UnitName ~= nil and "function" == type(UnitName) then
     local assumedAuthor = UnitName("player")
@@ -292,15 +296,6 @@ local createQuestSmart = function(givenGoalName, ...)
   return newQuest, optionalErrorMessage
 end
 
-local initAPI = function(self)    
-  self.getSupportedQuestGoals = getSupportedQuestGoals
-  self.isSupportedGoal = isSupportedGoal
-  self.isValidQuest = isValidQuest
-  self.createQuestSmart = createQuestSmart
-  self.wipeQuest = wipeQuest
-  BQuest = self
-end
-
 --[[ Query processing. ]]--
 
 local getQuests = function()
@@ -311,6 +306,15 @@ local getQuests = function()
     BQuestSavedVariables.quests = {}
   end
   return BQuestSavedVariables.quests
+end
+
+local getQuestsSet = function()
+  local questsSet = {}
+  for questId, quest in pairs(getQuests()) do
+    assert(isValidQuest(quest))
+    tinsert(questsSet, quest)
+  end
+  return questsSet
 end
 
 local getQuestProgress = function(questId)
@@ -330,23 +334,141 @@ local getQuestProgress = function(questId)
   return result
 end
 
+local skip = function(targetTable, skipAmount)
+  assert(targetTable ~= nil)
+  assert("table" == type(targetTable))
+  assert(skipAmount ~= nil)
+  assert("number" == type(skipAmount))
+  assert(skipAmount >= 0)
+  
+  skipAmount = math.ceil(skipAmount)
+  local operationsLimit = MAX_QUESTS
+  local operationsPerformed = 0
+  local filtered = {}
+  local skipped = 0
+  for k, v in pairs(targetTable) do
+    if skipped >= skipAmount and v ~= nil then
+      filtered[k] = v
+    end
+    skipped = skipped + 1
+    operationsPerformed = operationsPerformed + 1
+    assert(operationsPerformed < operationsLimit, 'Operations limit exceeded.')
+  end
+  
+  return filtered
+end
+
+local take = function(targetTable, takeAmount)
+  assert(targetTable ~= nil)
+  assert("table" == type(targetTable))
+  assert(takeAmount ~= nil)
+  assert("number" == type(takeAmount))
+  assert(takeAmount >= 0)
+  takeAmount = math.ceil(takeAmount)
+  
+  local operationsLimit = MAX_QUESTS
+  local operationsPerformed = 0
+  
+  local filtered = {}
+  local taken = 0
+  for k, v in pairs(targetTable) do
+    if taken <= takeAmount and v ~= nil then
+      filtered[k] = v
+    end
+    taken = taken + 1
+    operationsPerformed = operationsPerformed + 1
+    assert(operationsPerformed < operationsLimit, 'Operations limit exceeded.')
+  end
+  
+  return filtered
+end
+
+local requestItemName = function(itemId)
+  assert(itemId ~= nil)
+  assert("number" == type(itemId))
+  itemId = math.ceil(itemId)
+  
+  local itemName = GetItemInfo(itemId)
+  assert(itemName ~= nil)
+  assert("string" == type(itemName))
+  return itemName
+end
+
+local requestPlayerItems = function()
+  local containers = {-4, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
+  local items = {}
+  for i = 1, #containers do
+    local containerId = containers[i]
+    local slots = GetContainerNumSlots(containerId)
+    for slotId = 1, slots do
+      local containerItemId = GetContainerItemID(containerId, slotId)
+      if containerItemId ~= nil then
+        local _, containerItemCount = GetContainerItemInfo(containerId, slotId)
+        tinsert(items, {
+        	itemId = containerItemId or 0,
+         	itemCount = containerItemCount or 1
+        })
+      end
+    end
+  end
+  return items
+end
+
 --[[ Command processing. ]]--
 
 local forQuests = function(callback)
+  local operationsLimit = MAX_QUESTS
+  local operationsPerformed = 0
   for questId, quest in pairs(getQuests()) do
+    assert(isValidQuest(quest))
     callback(quest)
+    operationsPerformed = operationsPerformed + 1
+    assert(operationsPerformed < operationsLimit, 'Operations limit exceeded.')
   end
 end
 
 local updateProgress = function(callback)
-  for questId, quest in pairs(getQuests()) do
-    local progress = getQuestProgress(questId)
+  forQuests(function(quest)
+    local progress = getQuestProgress(quest.questId)
     callback(quest, progress)
-    BQuestSavedVariables.progress[questId] = progress
-  end
+    BQuestSavedVariables.progress[quest.questId] = progress
+  end)
+end
+
+local updateProgressCollectItem = function()
+  local items = requestPlayerItems()
+  updateProgress(function(quest, progress)
+    if 'CollectItem' == quest.goalName then
+      progress.itemAmount = 0
+      for i = 1, #items do
+        local item = items[i]
+        if quest.itemId == item.itemId then
+          progress.itemAmount = progress.itemAmount + item.itemCount
+        end
+      end
+    end
+  end)
 end
 
 --[[ TODO ]]--
+
+--[[ API. ]]--
+
+local initAPI = function(self)    
+  self.getSupportedQuestGoals = getSupportedQuestGoals
+  self.isSupportedGoal = isSupportedGoal
+  self.isValidQuest = isValidQuest
+  self.createQuestSmart = createQuestSmart
+  self.wipeQuest = wipeQuest
+  BQuest = self
+  
+  self:RegisterEvent('BAG_UPDATE')
+  self:SetScript('OnEvent', function(self, event, ...)
+    if 'BAG_UPDATE' == event then
+      updateProgressCollectItem()
+    end
+  end)
+end
 
 --[[ GUI. ]]--
 
@@ -356,7 +478,6 @@ local initGUI = function(self)
   self:SetBackdrop(StaticPopup1:GetBackdrop())
   self:SetPoint("CENTER", 0, 0)
 
-  local MAX_QUEST_FRAMES = 8
   local indent = 16
   local questFrames = {}
   local h = self:GetHeight() / MAX_QUEST_FRAMES
@@ -386,80 +507,56 @@ local initGUI = function(self)
   end
   self.questFrames = questFrames
   
+  local getQuestDescription = function(givenQuest, givenProgress)
+    assert(isValidQuest(givenQuest))
+    assert(givenProgress ~= nil)
+    assert("table" == type(givenProgress))
+    
+    local questDescription = nil
+    if 'CollectItem' == givenQuest.goalName then
+      local itemName = requestItemName(givenQuest.itemId)
+      questDescription = string.format('Collect %d of %s (%d collected).', givenQuest.itemAmount, itemName, givenProgress.itemAmount)
+    else
+      questDescription = string.format("Goal: %s. Progress is unknown.", givenQuest.goalName)
+    end
+    
+    assert(questDescription ~= nil)
+    assert("string" == type(questDescription))
+    return questDescription
+  end
+  
+  local updateQuestFrame = function(givenFrame, givenQuest, givenProgress)
+    assert(givenFrame ~= nil)
+    assert(isValidQuest(givenQuest))
+    
+    local questDescription = getQuestDescription(givenQuest, givenProgress)    
+    assert(questDescription ~= nil)
+    assert("string" == type(questDescription))
+    
+    givenFrame.fontFrame:SetText(questDescription)
+  end
+  
+  local updateQuestFrames = function()
+    local quests = getQuestsSet()
+    for i = 1, #quests do
+      local quest = quests[i]
+      assert(isValidQuest(quest))
+      local nextQuestFrame = self.questFrames[i]
+      local progress = getQuestProgress(quest.questId)
+      updateQuestFrame(nextQuestFrame, quest, progress)
+    end
+  end
+  
   self:HookScript("OnShow", function(self, ...)
     print('OnShow')
-    for i = 1, #self.questFrames do
-      local j = 1
-      for questId, quest in pairs(getQuests()) do
-        if j == i then
-          local questFrame = self.questFrames[i]
-          local questFrameText = ""
-          local attributesOfInterest = {
-            'goalName', 'itemAmount', 'killsAmount', 'usagesAmount',
-            'itemId',
-            'addresseeUnitName', 'victimUnitName'
-          }
-          for attribute, value in pairs(quest) do
-            print(attribute, value)
-            local isAttributeOfInterest = false
-            for k = 1, #attributesOfInterest do
-              isAttributeOfInterest = attributesOfInterest[k] == attribute or isAttributeOfInterest
-            end
-            if isAttributeOfInterest then
-              local formattedValue = value
-              if 'itemId' == attribute then
-                formattedValue = GetItemInfo(value)
-              end
-              
-              questFrameText = questFrameText .. attribute .. ": " .. formattedValue .. "|n"
-            end
-          end
-          local progress = getQuestProgress(quest.questId)
-          local formattedProgress = '?'
-          if 'CollectItem' == quest.goalName then
-            formattedProgress = progress.itemAmount or 0
-          end
-          questFrameText = questFrameText .. "Progress: " .. formattedProgress .. "|n"
-          questFrame.fontFrame:SetText(questFrameText)
-        end
-        print(i, j, questId)
-        j = j + 1
-      end
-    end
+    updateQuestFrames()
   end)
-  
-  self:RegisterEvent('BAG_UPDATE')
-  self:SetScript('OnEvent', function(self, event, ...)
-    if 'BAG_UPDATE' == event then
-      local containers = {-4, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
-      local items = {}
-      for i = 1, #containers do
-        local containerId = containers[i]
-        local slots = GetContainerNumSlots(containerId)
-        for slotId = 1, slots do
-          local containerItemId = GetContainerItemID(containerId, slotId)
-          if containerItemId ~= nil then
-            local _, containerItemCount = GetContainerItemInfo(containerId, slotId)
-            tinsert(items, {
-            	itemId = containerItemId or 0,
-            	itemCount = containerItemCount or 1
-            })
-          end
-        end
-      end
-      updateProgress(function(quest, progress)
-        if 'CollectItem' == quest.goalName then
-          progress.itemAmount = 0
-          for i = 1, #items do
-            local item = items[i]
-            if quest.itemId == item.itemId then
-              progress.itemAmount = progress.itemAmount + item.itemCount
-            end
-          end
-        end
-      end)
-    end
-  end)
+end
+
+--[[ CLI. ]]--
+
+local initCLI = function(self)
+  --[[ TODO ]]--
 end
 
 --[[ Init. ]]--
@@ -469,6 +566,7 @@ local bquest = CreateFrame("Frame", "BQuest", UIParent) or {}
 local init = function(self)
   initGUI(self)
   initAPI(self)
+  initCLI(self)
 end
 
 bquest:RegisterEvent("ADDON_LOADED")
