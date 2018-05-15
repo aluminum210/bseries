@@ -8,4 +8,4 @@
  */
 
 rootProject.name = 'bseries'
-include 'bbag'
+include 'bbag', 'bquest'
