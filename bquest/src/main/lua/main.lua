@@ -174,8 +174,8 @@ local isValidQuest = function(givenQuest)
     optionalErrorMessage = 'Quest identifier must be a number.' 
     return result, optionalErrorMessage
   end
-  if givenQuest.itemId ~= nil then
-    local itemName = requestItemName(givenQuest.itemId)
+  if givenQuest.itemId ~= nil and GetItemInfo ~= nil then
+    local itemName = GetItemInfo(givenQuest.itemId)
     result = itemName ~= nil and 'string' == type(itemName) and result
     if not result then
       optionalErrorMessage = 'Invalid item identifier.' 
@@ -336,6 +336,9 @@ local getQuestsSet = function()
     assert(isValidQuest(quest))
     tinsert(questsSet, quest)
   end
+  table.sort(questsSet, function(a, b)
+    return time(a.createdDateTable) > time(b.createdDateTable)
+  end)
   return questsSet
 end
 
@@ -369,13 +372,18 @@ local skip = function(targetTable, skipAmount)
   local filtered = {}
   local skipped = 0
   for k, v in pairs(targetTable) do
-    if skipped >= skipAmount and v ~= nil then
-      filtered[k] = v
+    if skipped == skipAmount and v ~= nil then
+      tinsert(filtered, v)
+    else
+      skipped = skipped + 1
     end
-    skipped = skipped + 1
     operationsPerformed = operationsPerformed + 1
     assert(operationsPerformed < operationsLimit, 'Operations limit exceeded.')
   end
+  
+  assert(filtered ~= nil)
+  assert('table' == type(filtered))
+  assert(#filtered == math.max(#targetTable - skipAmount, 0), string.format('%d ~= max(%d, %d)', #filtered, #targetTable - skipAmount, 0))
   
   return filtered
 end
@@ -394,13 +402,19 @@ local take = function(targetTable, takeAmount)
   local filtered = {}
   local taken = 0
   for k, v in pairs(targetTable) do
-    if taken <= takeAmount and v ~= nil then
-      filtered[k] = v
+    if taken < takeAmount and v ~= nil then
+      tinsert(filtered, v)
+    else
+      break
     end
     taken = taken + 1
     operationsPerformed = operationsPerformed + 1
     assert(operationsPerformed < operationsLimit, 'Operations limit exceeded.')
   end
+  
+  assert(filtered ~= nil)
+  assert('table' == type(filtered))
+  assert(#filtered == math.min(#targetTable, takeAmount))
   
   return filtered
 end
@@ -433,7 +447,8 @@ local getQuestDescription = function(givenQuest, givenProgress)
   local questDescription = nil
   if 'CollectItem' == givenQuest.goalName then
     local itemName = requestItemName(givenQuest.itemId)
-    questDescription = string.format('Collect %d of %s (%d collected).', givenQuest.itemAmount, itemName, givenProgress.itemAmount)
+    local itemAmount = givenProgress.itemAmount or 0
+    questDescription = string.format('Collect %d of %s (%d collected).', givenQuest.itemAmount, itemName, itemAmount)
   else
     questDescription = string.format("Goal: %s. Progress is unknown.", givenQuest.goalName)
   end
@@ -540,13 +555,31 @@ local getQuestHighlightBQuestBackdrop = function()
   return b
 end
 
+local initGUIMain = function()
+end
+
+local initGUINavAdd = function()
+end
+
+local initGUINavRemove = function()
+end
+
+local initGUINavShare = function()
+end
+
+local initGUINavClose = function()
+end
+
+local initGUINav = function()
+end
+
+local initGUISlider = function()
+end
+
+local initGUIContent = function()
+end
+
 local initGUI = function(self)
-  local initGUIMain = function()
-  end
-  local initGUINav = function()
-  end
-  local initGUIContent = function()
-  end
   
   self:SetWidth(512)
   self:SetHeight(640)
@@ -601,11 +634,37 @@ local initGUI = function(self)
   navClose:Show()
   
   local questFrames = {}
+  local sliderWidth = 16
   local questsContainer = CreateFrame('FRAME', self:GetName() .. 'QuestsContainer', self)
-  questsContainer:SetPoint("RIGHT",  self, "RIGHT",  -indent, 0)
+  questsContainer:SetPoint("RIGHT",  self, "RIGHT",  -sliderWidth-indent, 0)
   questsContainer:SetPoint("TOP",    self, "TOP",    0, -indent)
   questsContainer:SetPoint("LEFT",   self, "LEFT",   indent, 0)
   questsContainer:SetPoint("BOTTOM", self, "BOTTOM", 0, navHeight+indent)
+  
+  local slider = CreateFrame('SLIDER', self:GetName() .. 'Slider', self, 'OptionsSliderTemplate')
+  local quests = getQuestsSet()
+  slider:SetMinMaxValues(0, math.max(#quests-1, 0))
+  slider:SetValue(0)
+  slider:SetValueStep(MAX_QUEST_FRAMES)
+  slider:SetWidth(sliderWidth)
+  slider:SetHeight(questsContainer:GetHeight())
+  slider:SetPoint("RIGHT",  self, "RIGHT",  -indent, 0)
+  slider:SetPoint("TOP",    self, "TOP",    0, -indent)
+  slider:SetPoint("LEFT",   self, "RIGHT",   -slider:GetWidth()-indent, 0)
+  slider:SetPoint("BOTTOM", self, "BOTTOM", 0, navHeight+indent)
+  slider:SetOrientation('VERTICAL') 
+  getglobal(slider:GetName() .. 'Low'):SetText(nil)
+  getglobal(slider:GetName() .. 'High'):SetText(nil)
+  getglobal(slider:GetName() .. 'Text'):SetText(nil)
+  --slider.tooltipText = 'Slide me completely.'
+  slider:Enable()
+  slider:Show()
+  
+  local updateSlider = function()
+    local quests = getQuestsSet()
+    slider:SetMinMaxValues(0, math.max(#quests-1, 0))
+  end
+  updateSlider()
   
   local createQuestFrame = function(questFramesContainer)
     assert(questFramesContainer ~= nil)
@@ -683,12 +742,14 @@ local initGUI = function(self)
   
   local updateQuestFrames = function()
     local quests = getQuestsSet()
-    --[[ TODO ]]--
-    --[[quests = skip(quests, page*#questFrames)]]--
-    --[[quests = take(quests, #questFrames)]]--
+    skipAmount = math.max(math.min(slider:GetValue(), #quests-#questFrames), 0)
+    local afterSkip = skip(quests, skipAmount)
+    assert((#afterSkip == #quests - skipAmount) or (#afterSkip == 0 and #quests == 0))
+    local afterTake = take(afterSkip, #questFrames)
+    assert((#afterTake == math.min(#questFrames, #afterSkip)) or (#afterTake == 0 and #afterSkip == 0))
     for i = 1, math.min(#questFrames, MAX_QUEST_FRAMES) do
       local nextQuestFrame = questFrames[i]
-      local quest = quests[i]
+      local quest = afterTake[i]
       if quest ~= nil and isValidQuest(quest) then
         --[[assert(isValidQuest(quest))]]--
         local progress = getQuestProgress(quest.questId)
@@ -699,7 +760,13 @@ local initGUI = function(self)
     end
   end
   
+  slider:SetScript("OnValueChanged", function(self, skipAmount, ...)
+    assert(skipAmount == self:GetValue())
+    updateQuestFrames() 
+  end)
+  
   self:HookScript("OnShow", function(self, ...)
+    updateSlider()
     updateQuestFrames()
   end)
   
