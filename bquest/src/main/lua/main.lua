@@ -1,5 +1,4 @@
 --[[ Constants. ]]--
-local MAX_QUEST_FRAMES = 8
 local MAX_ATTRIBUTES = 8
 local MAX_QUESTS = 256
 
@@ -516,6 +515,8 @@ end
 
 --[[ GUI. ]]--
 
+--[[ GUI: Constants. ]]--
+
 local getDefaultBQuestBackdrop = function()
   return {
     bgFile   = [[Interface\Dialogframe\ui-dialogbox-background]],
@@ -555,103 +556,112 @@ local getQuestHighlightBQuestBackdrop = function()
   return b
 end
 
-local initGUIMain = function()
+local indent = 16
+
+local MAX_QUEST_FRAMES = 8
+
+local GUI_INDENT = 16
+
+local GUI_ROOT_WIDTH  = 512
+local GUI_ROOT_HEIGHT = 640
+
+local GUI_MAIN_WIDTH  = GUI_ROOT_WIDTH  - GUI_INDENT * 2
+local GUI_MAIN_HEIGHT = GUI_ROOT_HEIGHT - GUI_INDENT * 2
+
+local GUI_SLIDER_WIDTH  = 16
+local GUI_SLIDER_HEIGHT = GUI_MAIN_HEIGHT
+
+local GUI_NAV_WIDTH  = GUI_ROOT_WIDTH
+local GUI_NAV_HEIGHT = 40
+
+--[[local GUI_NAV_BUTTON_WIDTH  = GUI_NAV_WIDTH / 8]]--
+local GUI_NAV_BUTTON_HEIGHT = 20
+
+--[[ GUI: Static. ]]--
+
+local initGUIRoot = function(root)
+  root:SetWidth(GUI_ROOT_WIDTH)
+  root:SetHeight(GUI_ROOT_HEIGHT)
+  root:SetBackdrop(getDefaultBQuestBackdrop())
+  root:SetPoint("CENTER", 0, 0)
+  
+  return root
 end
 
-local initGUINavAdd = function()
+local initGUIMain = function(root)
+  local mainParent = root
+  local main = CreateFrame('FRAME', mainParent:GetName() .. 'Main', mainParent)
+  main:SetPoint("RIGHT",  mainParent, "RIGHT",  -GUI_SLIDER_WIDTH-indent, 0)
+  main:SetPoint("TOP",    mainParent, "TOP",    0, -indent)
+  main:SetPoint("LEFT",   mainParent, "LEFT",   indent, 0)
+  main:SetPoint("BOTTOM", mainParent, "BOTTOM", 0, GUI_NAV_HEIGHT+indent)
+  
+  return main
 end
 
-local initGUINavRemove = function()
+local createQuestFrame = function(questParent, newQuestFrameId)
+  assert(questParent ~= nil)
+    
+  local questHeight = questParent:GetHeight() / MAX_QUEST_FRAMES
+ 
+  local newQuestFrame = CreateFrame("BUTTON", questParent:GetName() .. "Quest" .. newQuestFrameId, questParent, "SecureHandlerClickTemplate")
+  newQuestFrame:SetWidth(questParent:GetWidth())
+  newQuestFrame:SetHeight(questHeight)
+  newQuestFrame:SetPoint("RIGHT",  questParent, "RIGHT", 0, 0)
+  newQuestFrame:SetPoint("TOP",    questParent, "TOP",   0, -questHeight*(newQuestFrameId-1))
+  newQuestFrame:SetPoint("LEFT",   questParent, "LEFT",  0, 0)
+  newQuestFrame:SetPoint("BOTTOM", questParent, "TOP",   0, -questHeight*(newQuestFrameId))
+  local b0 = getQuestBQuestBackdrop()
+  b0.bgFile = nil
+  newQuestFrame:SetBackdrop(b0)
+  
+  local fontFrame = newQuestFrame:CreateFontString(newQuestFrame:GetName() .. "Text", "OVERLAY", "GameFontWhite")
+  fontFrame:SetAllPoints()
+  fontFrame:SetText('Text is missing.')
+  fontFrame:Show()
+  newQuestFrame.text = fontFrame
+    
+  newQuestFrame.highlighted = false
+  newQuestFrame:RegisterForClicks("AnyUp")
+  newQuestFrame:SetScript('OnClick', function(self, event, ...)
+    if self.highlighted then
+      self.highlighted = false
+      self:SetBackdrop(getQuestBQuestBackdrop())
+    else
+      self.highlighted = true
+      self:SetBackdrop(getQuestHighlightBQuestBackdrop())
+    end
+  end)
+  local b = getQuestBQuestBackdrop()
+  newQuestFrame:SetNormalTexture(b.bgFile)
+  local bh = getQuestHighlightBQuestBackdrop()
+  newQuestFrame:SetPushedTexture(bh.bgFile)
+  newQuestFrame:SetHighlightTexture(bh.bgFile)
+    
+  newQuestFrame:Show()
+  
+  return newQuestFrame
 end
 
-local initGUINavShare = function()
+local initGUIMainEntries = function(main)
+  local mainEntries = {}
+  for i = 1, MAX_QUEST_FRAMES do
+    tinsert(mainEntries, createQuestFrame(main, i))
+  end
+  return mainEntries
 end
 
-local initGUINavClose = function()
-end
-
-local initGUINav = function()
-end
-
-local initGUISlider = function()
-end
-
-local initGUIContent = function()
-end
-
-local initGUI = function(self)
-  
-  self:SetWidth(512)
-  self:SetHeight(640)
-  self:SetBackdrop(getDefaultBQuestBackdrop())
-  self:SetPoint("CENTER", 0, 0)
-
-  local indent = 16
-  
-  local navHeight = 40
-  local nav = CreateFrame('FRAME', self:GetName() .. 'Nav', self)
-  nav:SetWidth(self:GetWidth())
-  nav:SetHeight(navHeight)
-  nav:SetPoint("RIGHT",  self, "RIGHT",  0, 0)
-  nav:SetPoint("TOP",    self, "BOTTOM", 0, navHeight)
-  nav:SetPoint("LEFT",   self, "LEFT",   0, 0)
-  nav:SetPoint("BOTTOM", self, "BOTTOM", 0, 0)
-  local navBackdrop = getDefaultBQuestBackdrop()
-  nav:SetBackdrop(navBackdrop)
-  
-  local navButtonHeight = 20
-  local navAdd = CreateFrame('BUTTON', nav:GetName() .. 'Add', nav, 'UIPanelButtonTemplate')
-  navAdd:SetSize(math.max(nav:GetWidth()/8, 64), navButtonHeight)
-  navAdd:SetPoint('LEFT', nav:GetWidth()/5-navAdd:GetWidth()/2, 0)
-  navAdd:SetPoint('BOTTOM', 0, navHeight/2-navAdd:GetHeight()/2)
-  local navAddText = _G[navAdd:GetName() .. 'Text']
-  navAddText:SetText('Add')
-  navAdd:Show()
-  
-  local navRemove = CreateFrame('BUTTON', nav:GetName() .. 'Remove', nav, 'UIPanelButtonTemplate')
-  navRemove:SetSize(math.max(nav:GetWidth()/8, 64), navButtonHeight)
-  navRemove:SetPoint('LEFT', nav:GetWidth()/5*2-navRemove:GetWidth()/2, 0)
-  navRemove:SetPoint('BOTTOM', 0, navHeight/2-navRemove:GetHeight()/2)
-  local navRemoveText = _G[navRemove:GetName() .. 'Text']
-  navRemoveText:SetText('Remove')
-  navRemove:Show()
-  
-  local navShare = CreateFrame('BUTTON', nav:GetName() .. 'Share', nav, 'UIPanelButtonTemplate')
-  navShare:SetSize(math.max(nav:GetWidth()/8, 64), navButtonHeight)
-  navShare:SetPoint('LEFT', nav:GetWidth()/5*3-navShare:GetWidth()/2, 0)
-  navShare:SetPoint('BOTTOM', 0, navHeight/2-navShare:GetHeight()/2)
-  local navShareText = _G[navShare:GetName() .. 'Text']
-  navShareText:SetText('Share')
-  navShare:Show()
-  
-  local navClose = CreateFrame('BUTTON', nav:GetName() .. 'Close', nav, 'UIPanelButtonTemplate')
-  navClose:SetSize(math.max(nav:GetWidth()/8, 64), navButtonHeight)
-  navClose:SetPoint('LEFT', nav:GetWidth()/5*4-navClose:GetWidth()/2, 0)
-  navClose:SetPoint('BOTTOM', 0, navHeight/2-navClose:GetHeight()/2)
-  local navCloseText = _G[navClose:GetName() .. 'Text']
-  navCloseText:SetText('Close')
-  local mainFrame = self
-  navClose:Show()
-  
-  local questFrames = {}
-  local sliderWidth = 16
-  local questsContainer = CreateFrame('FRAME', self:GetName() .. 'QuestsContainer', self)
-  questsContainer:SetPoint("RIGHT",  self, "RIGHT",  -sliderWidth-indent, 0)
-  questsContainer:SetPoint("TOP",    self, "TOP",    0, -indent)
-  questsContainer:SetPoint("LEFT",   self, "LEFT",   indent, 0)
-  questsContainer:SetPoint("BOTTOM", self, "BOTTOM", 0, navHeight+indent)
-  
-  local slider = CreateFrame('SLIDER', self:GetName() .. 'Slider', self, 'OptionsSliderTemplate')
-  local quests = getQuestsSet()
-  slider:SetMinMaxValues(0, math.max(#quests-1, 0))
+local initGUISlider = function(root)
+  local sliderParent = root
+  local slider = CreateFrame('SLIDER', sliderParent:GetName() .. 'Slider', sliderParent, 'OptionsSliderTemplate')
   slider:SetValue(0)
   slider:SetValueStep(MAX_QUEST_FRAMES)
-  slider:SetWidth(sliderWidth)
-  slider:SetHeight(questsContainer:GetHeight())
-  slider:SetPoint("RIGHT",  self, "RIGHT",  -indent, 0)
-  slider:SetPoint("TOP",    self, "TOP",    0, -indent)
-  slider:SetPoint("LEFT",   self, "RIGHT",   -slider:GetWidth()-indent, 0)
-  slider:SetPoint("BOTTOM", self, "BOTTOM", 0, navHeight+indent)
+  slider:SetWidth(GUI_SLIDER_WIDTH)
+  slider:SetHeight(GUI_SLIDER_HEIGHT)
+  slider:SetPoint("RIGHT",  sliderParent, "RIGHT",  -indent, 0)
+  slider:SetPoint("TOP",    sliderParent, "TOP",    0, -indent)
+  slider:SetPoint("LEFT",   sliderParent, "RIGHT",   -GUI_SLIDER_WIDTH-indent, 0)
+  slider:SetPoint("BOTTOM", sliderParent, "BOTTOM", 0, GUI_NAV_HEIGHT+indent)
   slider:SetOrientation('VERTICAL') 
   getglobal(slider:GetName() .. 'Low'):SetText(nil)
   getglobal(slider:GetName() .. 'High'):SetText(nil)
@@ -660,119 +670,169 @@ local initGUI = function(self)
   slider:Enable()
   slider:Show()
   
-  local updateSlider = function()
-    local quests = getQuestsSet()
-    slider:SetMinMaxValues(0, math.max(#quests-1, 0))
+  return slider
+end
+  
+local initGUINavAdd = function(nav)
+  local navAdd = CreateFrame('BUTTON', nav:GetName() .. 'Add', nav, 'UIPanelButtonTemplate')
+  navAdd:SetSize(nav:GetWidth()/8, GUI_NAV_BUTTON_HEIGHT)
+  navAdd:SetPoint('LEFT', nav:GetWidth()/5-navAdd:GetWidth()/2, 0)
+  navAdd:SetPoint('BOTTOM', 0, nav:GetHeight()/2-navAdd:GetHeight()/2)
+  local navAddText = _G[navAdd:GetName() .. 'Text']
+  navAddText:SetText('Add')
+  navAdd:Show()
+  
+  return navAdd
+end
+
+local initGUINavRemove = function(nav)
+  local navRemove = CreateFrame('BUTTON', nav:GetName() .. 'Remove', nav, 'UIPanelButtonTemplate')
+  navRemove:SetSize(nav:GetWidth()/8, GUI_NAV_BUTTON_HEIGHT)
+  navRemove:SetPoint('LEFT', nav:GetWidth()/5*2-navRemove:GetWidth()/2, 0)
+  navRemove:SetPoint('BOTTOM', 0, nav:GetHeight()/2-navRemove:GetHeight()/2)
+  local navRemoveText = _G[navRemove:GetName() .. 'Text']
+  navRemoveText:SetText('Remove')
+  navRemove:Show()
+  
+  return navRemove
+end
+
+local initGUINavShare = function(nav)
+  local navShare = CreateFrame('BUTTON', nav:GetName() .. 'Share', nav, 'UIPanelButtonTemplate')
+  navShare:SetSize(nav:GetWidth()/8, GUI_NAV_BUTTON_HEIGHT)
+  navShare:SetPoint('LEFT', nav:GetWidth()/5*3-navShare:GetWidth()/2, 0)
+  navShare:SetPoint('BOTTOM', 0, nav:GetHeight()/2-navShare:GetHeight()/2)
+  local navShareText = _G[navShare:GetName() .. 'Text']
+  navShareText:SetText('Share')
+  navShare:Show()
+  
+  return navShare
+end
+
+local initGUINavClose = function(nav)
+  local navClose = CreateFrame('BUTTON', nav:GetName() .. 'Close', nav, 'UIPanelButtonTemplate')
+  navClose:SetSize(nav:GetWidth()/8, GUI_NAV_BUTTON_HEIGHT)
+  navClose:SetPoint('LEFT', nav:GetWidth()/5*4-navClose:GetWidth()/2, 0)
+  navClose:SetPoint('BOTTOM', 0, nav:GetHeight()/2-navClose:GetHeight()/2)
+  local navCloseText = _G[navClose:GetName() .. 'Text']
+  navCloseText:SetText('Close')
+  navClose:Show()
+  
+  return navClose
+end
+
+local initGUINav = function(root)
+  local navParent = root
+  local nav = CreateFrame('FRAME', navParent:GetName() .. 'Nav', navParent)
+  nav:SetWidth(navParent:GetWidth())
+  nav:SetHeight(GUI_NAV_HEIGHT)
+  nav:SetPoint("RIGHT",  navParent, "RIGHT",  0, 0)
+  nav:SetPoint("TOP",    navParent, "BOTTOM", 0, nav:GetHeight())
+  nav:SetPoint("LEFT",   navParent, "LEFT",   0, 0)
+  nav:SetPoint("BOTTOM", navParent, "BOTTOM", 0, 0)
+  nav:SetBackdrop(getDefaultBQuestBackdrop())
+  
+  return nav
+end
+
+--[[ GUI: Handlers. ]]--
+
+local updateSlider = function(slider)
+  assert(slider ~= nil)
+  
+  local quests = getQuestsSet()
+  slider:SetMinMaxValues(0, math.max(#quests-1, 0))
+end  
+
+local updateQuestFrame = function(givenFrame, givenQuest, givenProgress)
+  assert(givenFrame ~= nil)
+  assert(isValidQuest(givenQuest))
+    
+  local questDescription = getQuestDescription(givenQuest, givenProgress)    
+  assert(questDescription ~= nil)
+  assert("string" == type(questDescription))
+    
+  givenFrame.text:SetText(questDescription)
+    
+  givenFrame.questId = givenQuest.questId
+end
+  
+local cleanQuestFrame = function(givenFrame)
+  assert(givenFrame ~= nil)
+    
+  givenFrame.questId = nil
+  givenFrame.highlighted = nil
+  if givenFrame.text ~= nil then
+    givenFrame.text:SetText(nil)
   end
-  updateSlider()
+  givenFrame:SetBackdrop(getQuestBQuestBackdrop())
+end
   
-  local createQuestFrame = function(questFramesContainer)
-    assert(questFramesContainer ~= nil)
-    assert(#questFrames <= MAX_QUEST_FRAMES)
-    
-    local h = questsContainer:GetHeight() / MAX_QUEST_FRAMES
+local updateQuestFrames = function(slider, questFrames)
+  assert(slider ~= nil)
+  assert(questFrames ~= nil)
+  assert('table' == type(questFrames))
   
-    local newQuestFrameId = #questFrames + 1
-    local newQuestFrame = CreateFrame("BUTTON", questFramesContainer:GetName() .. "Quest" .. newQuestFrameId, questFramesContainer, "SecureHandlerClickTemplate")
-    newQuestFrame:SetWidth(questFramesContainer:GetWidth())
-    newQuestFrame:SetHeight(h)
-    newQuestFrame:SetPoint("RIGHT",  questFramesContainer, "RIGHT", 0, 0)
-    newQuestFrame:SetPoint("TOP",    questFramesContainer, "TOP",   0, -h*(newQuestFrameId-1))
-    newQuestFrame:SetPoint("LEFT",   questFramesContainer, "LEFT",  0, 0)
-    newQuestFrame:SetPoint("BOTTOM", questFramesContainer, "TOP",   0, -h*(newQuestFrameId))
-    local b0 = getQuestBQuestBackdrop()
-    b0.bgFile = nil
-    newQuestFrame:SetBackdrop(b0)
+  local quests = getQuestsSet()
+  skipAmount = math.max(math.min(slider:GetValue(), #quests-#questFrames), 0)
     
-    local fontFrame = newQuestFrame:CreateFontString(newQuestFrame:GetName() .. "Name", "OVERLAY", "GameFontWhite")
-    fontFrame:SetAllPoints()
-    fontFrame:SetText('Text is missing.')
-    fontFrame:Show()
-    newQuestFrame.fontFrame = fontFrame
+  local afterSkip = skip(quests, skipAmount)
+  assert((#afterSkip == #quests - skipAmount) or (#afterSkip == 0 and #quests == 0))
     
-    newQuestFrame.highlighted = false
-    newQuestFrame:RegisterForClicks("AnyUp")
-    newQuestFrame:SetScript('OnClick', function(self, event, ...)
-      if self.highlighted then
-        self.highlighted = false
-        self:SetBackdrop(getQuestBQuestBackdrop())
-      else
-        self.highlighted = true
-        self:SetBackdrop(getQuestHighlightBQuestBackdrop())
-      end
-    end)
-    local b = getQuestBQuestBackdrop()
-    newQuestFrame:SetNormalTexture(b.bgFile)
-    local bh = getQuestHighlightBQuestBackdrop()
-    newQuestFrame:SetPushedTexture(bh.bgFile)
-    newQuestFrame:SetHighlightTexture(bh.bgFile)
+  local afterTake = take(afterSkip, #questFrames)
+  assert((#afterTake == math.min(#questFrames, #afterSkip)) or (#afterTake == 0 and #afterSkip == 0))
     
-    newQuestFrame:Show()
-  
-    return newQuestFrame
-  end
-  
-  for i = 1, MAX_QUEST_FRAMES do
-    tinsert(questFrames, createQuestFrame(questsContainer))
-  end
-  
-  local updateQuestFrame = function(givenFrame, givenQuest, givenProgress)
-    assert(givenFrame ~= nil)
-    assert(isValidQuest(givenQuest))
-    
-    local questDescription = getQuestDescription(givenQuest, givenProgress)    
-    assert(questDescription ~= nil)
-    assert("string" == type(questDescription))
-    
-    givenFrame.fontFrame:SetText(questDescription)
-    
-    givenFrame.questId = givenQuest.questId
-  end
-  
-  local cleanQuestFrame = function(givenFrame)
-    assert(givenFrame ~= nil)
-    
-    givenFrame.questId = nil
-    givenFrame.highlighted = nil
-    if givenFrame.fontFrame ~= nil then
-      givenFrame.fontFrame:SetText(nil)
+  for i = 1, math.min(#questFrames, MAX_QUEST_FRAMES) do
+    local nextQuestFrame = questFrames[i]
+    local quest = afterTake[i]
+    if quest ~= nil and isValidQuest(quest) then
+      --[[assert(isValidQuest(quest))]]--
+      local progress = getQuestProgress(quest.questId)
+      updateQuestFrame(nextQuestFrame, quest, progress)
+    else
+      cleanQuestFrame(nextQuestFrame)
     end
-    givenFrame:SetBackdrop(getQuestBQuestBackdrop())
   end
+end
+
+local initGUIHandlerRoot = function(root, slider, questFrames)
+  assert(root ~= nil)
+  assert(slider ~= nil)
+  assert(questFrames ~= nil)
+  assert('table' == type(questFrames))
   
-  local updateQuestFrames = function()
-    local quests = getQuestsSet()
-    skipAmount = math.max(math.min(slider:GetValue(), #quests-#questFrames), 0)
-    local afterSkip = skip(quests, skipAmount)
-    assert((#afterSkip == #quests - skipAmount) or (#afterSkip == 0 and #quests == 0))
-    local afterTake = take(afterSkip, #questFrames)
-    assert((#afterTake == math.min(#questFrames, #afterSkip)) or (#afterTake == 0 and #afterSkip == 0))
-    for i = 1, math.min(#questFrames, MAX_QUEST_FRAMES) do
-      local nextQuestFrame = questFrames[i]
-      local quest = afterTake[i]
-      if quest ~= nil and isValidQuest(quest) then
-        --[[assert(isValidQuest(quest))]]--
-        local progress = getQuestProgress(quest.questId)
-        updateQuestFrame(nextQuestFrame, quest, progress)
-      else
-        cleanQuestFrame(nextQuestFrame)
-      end
-    end
-  end
+  root:HookScript('OnShow', function(self, ...)
+    updateSlider(slider)
+    updateQuestFrames(slider, questFrames)
+  end)
+end
+
+local initGUIHandlerMain = function(main)
+  return nil
+end
+
+local initGUIHandlerSlider = function(slider, questFrames)
+  assert(slider ~= nil)
+  assert(questFrames ~= nil)
+  assert('table' == type(questFrames))
   
-  slider:SetScript("OnValueChanged", function(self, skipAmount, ...)
+  slider:SetScript('OnValueChanged', function(self, skipAmount, ...)
     assert(skipAmount == self:GetValue())
-    updateQuestFrames() 
+    updateQuestFrames(slider, questFrames) 
   end)
-  
-  self:HookScript("OnShow", function(self, ...)
-    updateSlider()
-    updateQuestFrames()
-  end)
-  
+end  
+
+local initGUIHandlerNavAdd = function(navAdd)  
   navAdd:SetScript('OnClick', function(self, event, ...)
     print('TODO')
   end)
+end
+
+local initGUIHandlerNavRemove = function(navRemove, slider, questFrames)
+  assert(slider ~= nil)
+  assert(questFrames ~= nil)
+  assert('table' == type(questFrames))
+  
   navRemove:SetScript('OnClick', function(self, event, ...)
     for i = 1, #questFrames do
       local questFrame = questFrames[i]
@@ -780,18 +840,46 @@ local initGUI = function(self)
         local questId = questFrame.questId
         if questId ~= nil and 'number' == type(questId) and questId > 0 then
           wipeQuest(math.ceil(questId))
-          cleanQuestFrame(questFrame)
-          updateQuestFrames()
         end
       end
     end
+    updateSlider(slider)
+    updateQuestFrames(slider, questFrames)
   end)
+end
+
+local initGUIHandlerNavShare = function(navShare)
   navShare:SetScript('OnClick', function(self, event, ...)
     print('TODO')
   end)
+end
+
+local initGUIHandlerNavClose = function(navClose, root)
   navClose:SetScript('OnClick', function(self, event, ...)
-    mainFrame:Hide()
+    root:Hide()
   end)
+end
+
+--[[ GUI: Init. ]]--
+
+local initGUI = function(self)
+  local root        = initGUIRoot(self)
+  local nav         = initGUINav(root)
+  local navAdd      = initGUINavAdd(nav)
+  local navRemove   = initGUINavRemove(nav)
+  local navShare    = initGUINavShare(nav)
+  local navClose    = initGUINavClose(nav)
+  local main        = initGUIMain(root)
+  local questFrames = initGUIMainEntries(main)
+  local slider      = initGUISlider(root)
+  initGUIHandlerRoot(root, slider, questFrames)
+  initGUIHandlerMain(main)
+  initGUIHandlerSlider(slider, questFrames)
+  initGUIHandlerNavAdd(navAdd)
+  initGUIHandlerNavRemove(navRemove, slider, questFrames)
+  initGUIHandlerNavShare(navShare)
+  initGUIHandlerNavClose(navClose, root)
+  updateSlider(slider)
 end
 
 --[[ CLI. ]]--
