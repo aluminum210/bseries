@@ -1,8 +1,14 @@
---[[ Constants. ]]--
+--[[--
+  BQuest add-on for World of Warcraft: Wrath of the Lich King game.
+  @script bquest
+]]
+
+--[[--
+  Constants.
+  @section constants
+]]
 local MAX_ATTRIBUTES = 8
 local MAX_QUESTS = 256
-
---[[ Core: quests. ]]--
 
 local getSupportedQuestGoals = function()
   return {
@@ -11,6 +17,19 @@ local getSupportedQuestGoals = function()
   }
 end
 
+
+--[[--
+  Core.
+  @section core
+]]
+
+--[[--
+  Check if goal of given name is supported by the rest of the add-on.
+  @function isSupportedQuestGoal
+  @param targetGoalName non-nil string that is goal name to be checked
+  @return boolean true if `targetGoalName` was found in `supportedGoals` table;
+    false otherwise.
+]]
 local isSupportedQuestGoal = function(targetGoalName)
   assert(targetGoalName ~= nil)
   assert("string" == type(targetGoalName))
@@ -221,7 +240,11 @@ local createQuest = function(questPrototype)
   return newQuest
 end
 
---[[ Persistence. ]]--
+
+--[[--
+  Persistence.
+  @section persistence
+]]
 
 BQuestSavedVariables = {}
 local persistQuest = function(givenQuest)
@@ -319,7 +342,11 @@ local createQuestSmart = function(givenGoalName, ...)
   return newQuest, optionalErrorMessage
 end
 
---[[ Query processing. ]]--
+
+--[[--
+  Query processing.
+  @section queries
+]]
 
 local getQuestsMap = function()
   if nil == BQuestSavedVariables then
@@ -487,7 +514,11 @@ local getQuestDescription = function(givenQuest, givenProgress)
   return questDescription
 end
 
---[[ Command processing. ]]--
+
+--[[--
+  Command processing.
+  @section commands
+]]
 
 local forQuests = function(callback)
   local operationsLimit = MAX_QUESTS
@@ -543,7 +574,11 @@ local initAPI = function(self)
   end)
 end
 
---[[ GUI. ]]--
+
+--[[--
+  GUI.
+  @section gui
+]]
 
 --[[ GUI: Constants. ]]--
 
@@ -1066,7 +1101,11 @@ local initCLI = function(self)
   --[[ TODO ]]--
 end
 
---[[ Init. ]]--
+
+--[[--
+  Initialization.
+  @section init
+]]
 
 local bquest = CreateFrame('FRAME', 'BQuest', UIParent) or {}
 
