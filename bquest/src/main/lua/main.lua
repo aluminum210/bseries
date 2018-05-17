@@ -1,9 +1,14 @@
---[[ Constants. ]]--
-local MAX_QUEST_FRAMES = 8
+--[[--
+  BQuest add-on for World of Warcraft: Wrath of the Lich King game.
+  @script bquest
+]]
+
+--[[--
+  Constants.
+  @section constants
+]]
 local MAX_ATTRIBUTES = 8
 local MAX_QUESTS = 256
-
---[[ Core: quests. ]]--
 
 local getSupportedQuestGoals = function()
   return {
@@ -12,6 +17,19 @@ local getSupportedQuestGoals = function()
   }
 end
 
+
+--[[--
+  Core.
+  @section core
+]]
+
+--[[--
+  Check if goal of given name is supported by the rest of the add-on.
+  @function isSupportedQuestGoal
+  @param targetGoalName non-nil string that is goal name to be checked
+  @return boolean true if `targetGoalName` was found in `supportedGoals` table;
+    false otherwise.
+]]
 local isSupportedQuestGoal = function(targetGoalName)
   assert(targetGoalName ~= nil)
   assert("string" == type(targetGoalName))
@@ -120,17 +138,6 @@ local questPrototypeUseSkill = function(givenSkillId, givenUsagesAmount, givenOp
   return result
 end
 
-local requestItemName = function(itemId)
-  assert(itemId ~= nil)
-  assert("number" == type(itemId))
-  itemId = math.ceil(itemId)
-  
-  local itemName = GetItemInfo(itemId)
-  assert(itemName ~= nil)
-  assert("string" == type(itemName))
-  return itemName
-end
-
 local isValidQuest = function(givenQuest)
   assert(givenQuest ~= nil)
   assert("table" == type(givenQuest))
@@ -233,26 +240,43 @@ local createQuest = function(questPrototype)
   return newQuest
 end
 
---[[ Persistence. ]]--
+
+--[[--
+  Persistence.
+  @section persistence
+]]
 
 BQuestSavedVariables = {}
 local persistQuest = function(givenQuest)
+  assert(givenQuest ~= nil)
   assert(isValidQuest(givenQuest))
   
   if nil == BQuestSavedVariables.quests then
     BQuestSavedVariables.quests = {}
   end
   
+  local optionalErrorMessage = nil
+  
   local persistedQuests = BQuestSavedVariables.quests
   
-  local optionalErrorMessage = nil
-  if nil == persistedQuests[givenQuest.questId] then
+  local operationsLimit = MAX_QUESTS
+  local operationsPerformed = 0
+  local questsAmount = 0
+  for questId, quest in pairs(persistedQuests) do
+    questsAmount = questsAmount + 1
+    operationsPerformed = operationsPerformed + 1
+    assert(operationsPerformed <= operationsLimit)
+  end
+  
+  if nil == persistedQuests[givenQuest.questId] and questsAmount < MAX_QUESTS then
     local givenCreatedDateTable = givenQuest.createdDateTable 
     givenQuest.createdDateTable = date("*t", time(givenCreatedDateTable))
     
     persistedQuests[givenQuest.questId] = givenQuest
   elseif persistedQuests[givenQuest.questId] ~= nil and isValidQuest(persistedQuests[givenQuest.questId]) then
     optionalErrorMessage = "Quest already exists. Try creating and persisting another quest with the same attributes."
+  elseif questsAmount >= MAX_QUESTS then
+    optionalErrorMessage = 'Maximum amount of quests exceeded.'
   else
     optionalErrorMessage = "Space is not empty or some other error."
   end
@@ -318,9 +342,13 @@ local createQuestSmart = function(givenGoalName, ...)
   return newQuest, optionalErrorMessage
 end
 
---[[ Query processing. ]]--
 
-local getQuests = function()
+--[[--
+  Query processing.
+  @section queries
+]]
+
+local getQuestsMap = function()
   if nil == BQuestSavedVariables then
     BQuestSavedVariables = {}
   end
@@ -330,11 +358,28 @@ local getQuests = function()
   return BQuestSavedVariables.quests
 end
 
+local getQuest = function(questId)
+  assert(questId ~= nil)
+  assert('number' == type(questId))
+  assert(questId > 0)
+  
+  local quests = getQuestsMap()
+  local quest = quests[questId]
+  
+  assert(quest == nil or isValidQuest(quest))
+  
+  return quest
+end
+
 local getQuestsSet = function()
   local questsSet = {}
-  for questId, quest in pairs(getQuests()) do
+  local operationsLimit = MAX_QUESTS
+  local operationsPerformed = 0
+  for questId, quest in pairs(getQuestsMap()) do
     assert(isValidQuest(quest))
     tinsert(questsSet, quest)
+    operationsPerformed = operationsPerformed + 1
+    assert(operationsPerformed <= operationsLimit)
   end
   table.sort(questsSet, function(a, b)
     return time(a.createdDateTable) > time(b.createdDateTable)
@@ -419,6 +464,17 @@ local take = function(targetTable, takeAmount)
   return filtered
 end
 
+local requestItemName = function(itemId)
+  assert(itemId ~= nil)
+  assert("number" == type(itemId))
+  itemId = math.ceil(itemId)
+  
+  local itemName = GetItemInfo(itemId)
+  assert(itemName ~= nil)
+  assert("string" == type(itemName))
+  return itemName
+end
+
 local requestPlayerItems = function()
   local containers = {-4, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
   local items = {}
@@ -458,12 +514,16 @@ local getQuestDescription = function(givenQuest, givenProgress)
   return questDescription
 end
 
---[[ Command processing. ]]--
+
+--[[--
+  Command processing.
+  @section commands
+]]
 
 local forQuests = function(callback)
   local operationsLimit = MAX_QUESTS
   local operationsPerformed = 0
-  for questId, quest in pairs(getQuests()) do
+  for questId, quest in pairs(getQuestsMap()) do
     assert(isValidQuest(quest))
     callback(quest)
     operationsPerformed = operationsPerformed + 1
@@ -514,7 +574,13 @@ local initAPI = function(self)
   end)
 end
 
---[[ GUI. ]]--
+
+--[[--
+  GUI.
+  @section gui
+]]
+
+--[[ GUI: Constants. ]]--
 
 local getDefaultBQuestBackdrop = function()
   return {
@@ -555,104 +621,114 @@ local getQuestHighlightBQuestBackdrop = function()
   return b
 end
 
-local initGUIMain = function()
+local indent = 16
+
+local MAX_QUEST_FRAMES = 8
+
+local GUI_INDENT = 16
+
+local GUI_ROOT_WIDTH  = 512
+local GUI_ROOT_HEIGHT = 512
+
+local GUI_MAIN_WIDTH  = GUI_ROOT_WIDTH  - GUI_INDENT * 2
+local GUI_MAIN_HEIGHT = GUI_ROOT_HEIGHT - GUI_INDENT * 2
+
+local GUI_SLIDER_WIDTH  = 16
+local GUI_SLIDER_HEIGHT = GUI_MAIN_HEIGHT
+
+local GUI_NAV_WIDTH  = GUI_ROOT_WIDTH
+local GUI_NAV_HEIGHT = 40
+
+--[[local GUI_NAV_BUTTON_WIDTH  = GUI_NAV_WIDTH / 8]]--
+local GUI_NAV_BUTTON_HEIGHT = 20
+
+--[[ GUI: Static. ]]--
+
+local initGUIRoot = function(root)
+  root:SetWidth(GUI_ROOT_WIDTH)
+  root:SetHeight(GUI_ROOT_HEIGHT)
+  root:SetBackdrop(getDefaultBQuestBackdrop())
+  root:SetPoint("CENTER", 0, 0)
+  
+  --[[ http://wowwiki.wikia.com/wiki/Creating_standard_left-sliding_frames ]]--
+  
+  root:SetAttribute("UIPanelLayout-defined",   true)
+  root:SetAttribute("UIPanelLayout-enabled",   true)
+  root:SetAttribute("UIPanelLayout-area",      "middle")
+  root:SetAttribute("UIPanelLayout-pushable",  2)
+  root:SetAttribute("UIPanelLayout-width",     GUI_ROOT_WIDTH)
+  root:SetAttribute("UIPanelLayout-whileDead", true)
+  
+  return root
 end
 
-local initGUINavAdd = function()
+local initGUIMain = function(root)
+  local mainParent = root
+  local main = CreateFrame('FRAME', mainParent:GetName() .. 'Main', mainParent)
+  main:SetPoint("RIGHT",  mainParent, "RIGHT",  -GUI_SLIDER_WIDTH-indent, 0)
+  main:SetPoint("TOP",    mainParent, "TOP",    0, -indent)
+  main:SetPoint("LEFT",   mainParent, "LEFT",   indent, 0)
+  main:SetPoint("BOTTOM", mainParent, "BOTTOM", 0, GUI_NAV_HEIGHT+indent)
+  main.highlights = {}
+  
+  return main
 end
 
-local initGUINavRemove = function()
+local createQuestFrame = function(main, questParent, newQuestFrameId)
+  assert(questParent ~= nil)
+    
+  local questHeight = questParent:GetHeight() / MAX_QUEST_FRAMES
+ 
+  local newQuestFrame = CreateFrame("BUTTON", questParent:GetName() .. "Quest" .. newQuestFrameId, questParent, "SecureHandlerClickTemplate")
+  newQuestFrame:SetWidth(questParent:GetWidth())
+  newQuestFrame:SetHeight(questHeight)
+  newQuestFrame:SetPoint("RIGHT",  questParent, "RIGHT", 0, 0)
+  newQuestFrame:SetPoint("TOP",    questParent, "TOP",   0, -questHeight*(newQuestFrameId-1))
+  newQuestFrame:SetPoint("LEFT",   questParent, "LEFT",  0, 0)
+  newQuestFrame:SetPoint("BOTTOM", questParent, "TOP",   0, -questHeight*(newQuestFrameId))
+  local b0 = getQuestBQuestBackdrop()
+  b0.bgFile = nil
+  newQuestFrame:SetBackdrop(b0)
+  
+  local fontFrame = newQuestFrame:CreateFontString(newQuestFrame:GetName() .. "Text", "OVERLAY", "GameFontWhite")
+  fontFrame:SetAllPoints()
+  fontFrame:SetText('Text is missing.')
+  fontFrame:Show()
+  newQuestFrame.text = fontFrame
+    
+  newQuestFrame:RegisterForClicks("AnyUp")
+  --[[local b = getQuestBQuestBackdrop()
+  newQuestFrame:SetNormalTexture(b.bgFile)
+  local bh = getQuestHighlightBQuestBackdrop()
+  newQuestFrame:SetPushedTexture(bh.bgFile)
+  newQuestFrame:SetHighlightTexture(bh.bgFile)]]--
+    
+  newQuestFrame:Show()
+  
+  return newQuestFrame
 end
 
-local initGUINavShare = function()
+local initGUIMainEntries = function(main)
+  local mainEntries = {}
+  for i = 1, MAX_QUEST_FRAMES do
+    tinsert(mainEntries, createQuestFrame(main, main, i))
+  end
+  return mainEntries
 end
 
-local initGUINavClose = function()
-end
-
-local initGUINav = function()
-end
-
-local initGUISlider = function()
-end
-
-local initGUIContent = function()
-end
-
-local initGUI = function(self)
-  
-  self:SetWidth(512)
-  self:SetHeight(640)
-  self:SetBackdrop(getDefaultBQuestBackdrop())
-  self:SetPoint("CENTER", 0, 0)
-
-  local indent = 16
-  
-  local navHeight = 40
-  local nav = CreateFrame('FRAME', self:GetName() .. 'Nav', self)
-  nav:SetWidth(self:GetWidth())
-  nav:SetHeight(navHeight)
-  nav:SetPoint("RIGHT",  self, "RIGHT",  0, 0)
-  nav:SetPoint("TOP",    self, "BOTTOM", 0, navHeight)
-  nav:SetPoint("LEFT",   self, "LEFT",   0, 0)
-  nav:SetPoint("BOTTOM", self, "BOTTOM", 0, 0)
-  local navBackdrop = getDefaultBQuestBackdrop()
-  nav:SetBackdrop(navBackdrop)
-  
-  local navButtonHeight = 20
-  local navAdd = CreateFrame('BUTTON', nav:GetName() .. 'Add', nav, 'UIPanelButtonTemplate')
-  navAdd:SetSize(math.max(nav:GetWidth()/8, 64), navButtonHeight)
-  navAdd:SetPoint('LEFT', nav:GetWidth()/5-navAdd:GetWidth()/2, 0)
-  navAdd:SetPoint('BOTTOM', 0, navHeight/2-navAdd:GetHeight()/2)
-  local navAddText = _G[navAdd:GetName() .. 'Text']
-  navAddText:SetText('Add')
-  navAdd:Show()
-  
-  local navRemove = CreateFrame('BUTTON', nav:GetName() .. 'Remove', nav, 'UIPanelButtonTemplate')
-  navRemove:SetSize(math.max(nav:GetWidth()/8, 64), navButtonHeight)
-  navRemove:SetPoint('LEFT', nav:GetWidth()/5*2-navRemove:GetWidth()/2, 0)
-  navRemove:SetPoint('BOTTOM', 0, navHeight/2-navRemove:GetHeight()/2)
-  local navRemoveText = _G[navRemove:GetName() .. 'Text']
-  navRemoveText:SetText('Remove')
-  navRemove:Show()
-  
-  local navShare = CreateFrame('BUTTON', nav:GetName() .. 'Share', nav, 'UIPanelButtonTemplate')
-  navShare:SetSize(math.max(nav:GetWidth()/8, 64), navButtonHeight)
-  navShare:SetPoint('LEFT', nav:GetWidth()/5*3-navShare:GetWidth()/2, 0)
-  navShare:SetPoint('BOTTOM', 0, navHeight/2-navShare:GetHeight()/2)
-  local navShareText = _G[navShare:GetName() .. 'Text']
-  navShareText:SetText('Share')
-  navShare:Show()
-  
-  local navClose = CreateFrame('BUTTON', nav:GetName() .. 'Close', nav, 'UIPanelButtonTemplate')
-  navClose:SetSize(math.max(nav:GetWidth()/8, 64), navButtonHeight)
-  navClose:SetPoint('LEFT', nav:GetWidth()/5*4-navClose:GetWidth()/2, 0)
-  navClose:SetPoint('BOTTOM', 0, navHeight/2-navClose:GetHeight()/2)
-  local navCloseText = _G[navClose:GetName() .. 'Text']
-  navCloseText:SetText('Close')
-  local mainFrame = self
-  navClose:Show()
-  
-  local questFrames = {}
-  local sliderWidth = 16
-  local questsContainer = CreateFrame('FRAME', self:GetName() .. 'QuestsContainer', self)
-  questsContainer:SetPoint("RIGHT",  self, "RIGHT",  -sliderWidth-indent, 0)
-  questsContainer:SetPoint("TOP",    self, "TOP",    0, -indent)
-  questsContainer:SetPoint("LEFT",   self, "LEFT",   indent, 0)
-  questsContainer:SetPoint("BOTTOM", self, "BOTTOM", 0, navHeight+indent)
-  
-  local slider = CreateFrame('SLIDER', self:GetName() .. 'Slider', self, 'OptionsSliderTemplate')
-  local quests = getQuestsSet()
-  slider:SetMinMaxValues(0, math.max(#quests-1, 0))
+local initGUISlider = function(root)
+  local sliderParent = root
+  local slider = CreateFrame('SLIDER', sliderParent:GetName() .. 'Slider', sliderParent, 'OptionsSliderTemplate')
   slider:SetValue(0)
   slider:SetValueStep(MAX_QUEST_FRAMES)
-  slider:SetWidth(sliderWidth)
-  slider:SetHeight(questsContainer:GetHeight())
-  slider:SetPoint("RIGHT",  self, "RIGHT",  -indent, 0)
-  slider:SetPoint("TOP",    self, "TOP",    0, -indent)
-  slider:SetPoint("LEFT",   self, "RIGHT",   -slider:GetWidth()-indent, 0)
-  slider:SetPoint("BOTTOM", self, "BOTTOM", 0, navHeight+indent)
+  slider:SetWidth(GUI_SLIDER_WIDTH)
+  slider:SetHeight(GUI_SLIDER_HEIGHT)
+  slider:SetPoint("RIGHT",  sliderParent, "RIGHT",  -indent, 0)
+  slider:SetPoint("TOP",    sliderParent, "TOP",    0, -indent)
+  slider:SetPoint("LEFT",   sliderParent, "RIGHT",   -GUI_SLIDER_WIDTH-indent, 0)
+  slider:SetPoint("BOTTOM", sliderParent, "BOTTOM", 0, GUI_NAV_HEIGHT+indent)
   slider:SetOrientation('VERTICAL') 
+  slider:SetMinMaxValues(0, MAX_QUESTS)
   getglobal(slider:GetName() .. 'Low'):SetText(nil)
   getglobal(slider:GetName() .. 'High'):SetText(nil)
   getglobal(slider:GetName() .. 'Text'):SetText(nil)
@@ -660,138 +736,363 @@ local initGUI = function(self)
   slider:Enable()
   slider:Show()
   
-  local updateSlider = function()
-    local quests = getQuestsSet()
-    slider:SetMinMaxValues(0, math.max(#quests-1, 0))
+  return slider
+end
+  
+local initGUINavAdd = function(nav)
+  local navAdd = CreateFrame('BUTTON', nav:GetName() .. 'Add', nav, 'UIPanelButtonTemplate')
+  navAdd:SetSize(nav:GetWidth()/8, GUI_NAV_BUTTON_HEIGHT)
+  navAdd:SetPoint('LEFT', nav:GetWidth()/5-navAdd:GetWidth()/2, 0)
+  navAdd:SetPoint('BOTTOM', 0, nav:GetHeight()/2-navAdd:GetHeight()/2)
+  local navAddText = _G[navAdd:GetName() .. 'Text']
+  navAddText:SetText('Add')
+  navAdd:Show()
+  
+  return navAdd
+end
+
+local initGUINavRemove = function(nav)
+  local navRemove = CreateFrame('BUTTON', nav:GetName() .. 'Remove', nav, 'UIPanelButtonTemplate')
+  navRemove:SetSize(nav:GetWidth()/8, GUI_NAV_BUTTON_HEIGHT)
+  navRemove:SetPoint('LEFT', nav:GetWidth()/5*2-navRemove:GetWidth()/2, 0)
+  navRemove:SetPoint('BOTTOM', 0, nav:GetHeight()/2-navRemove:GetHeight()/2)
+  local navRemoveText = _G[navRemove:GetName() .. 'Text']
+  navRemoveText:SetText('Remove')
+  navRemove:Show()
+  
+  return navRemove
+end
+
+local initGUINavShare = function(nav)
+  local navShare = CreateFrame('BUTTON', nav:GetName() .. 'Share', nav, 'UIPanelButtonTemplate')
+  navShare:SetSize(nav:GetWidth()/8, GUI_NAV_BUTTON_HEIGHT)
+  navShare:SetPoint('LEFT', nav:GetWidth()/5*3-navShare:GetWidth()/2, 0)
+  navShare:SetPoint('BOTTOM', 0, nav:GetHeight()/2-navShare:GetHeight()/2)
+  local navShareText = _G[navShare:GetName() .. 'Text']
+  navShareText:SetText('Share')
+  navShare:Show()
+  
+  return navShare
+end
+
+local initGUINavClose = function(nav)
+  local navClose = CreateFrame('BUTTON', nav:GetName() .. 'Close', nav, 'UIPanelButtonTemplate')
+  navClose:SetSize(nav:GetWidth()/8, GUI_NAV_BUTTON_HEIGHT)
+  navClose:SetPoint('LEFT', nav:GetWidth()/5*4-navClose:GetWidth()/2, 0)
+  navClose:SetPoint('BOTTOM', 0, nav:GetHeight()/2-navClose:GetHeight()/2)
+  local navCloseText = _G[navClose:GetName() .. 'Text']
+  navCloseText:SetText('Close')
+  navClose:Show()
+  
+  return navClose
+end
+
+local initGUINav = function(root)
+  local navParent = root
+  local nav = CreateFrame('FRAME', navParent:GetName() .. 'Nav', navParent)
+  nav:SetWidth(navParent:GetWidth())
+  nav:SetHeight(GUI_NAV_HEIGHT)
+  nav:SetPoint("RIGHT",  navParent, "RIGHT",  0, 0)
+  nav:SetPoint("TOP",    navParent, "BOTTOM", 0, nav:GetHeight())
+  nav:SetPoint("LEFT",   navParent, "LEFT",   0, 0)
+  nav:SetPoint("BOTTOM", navParent, "BOTTOM", 0, 0)
+  nav:SetBackdrop(getDefaultBQuestBackdrop())
+  
+  return nav
+end
+
+--[[ GUI: Handlers. ]]--
+
+local updateSlider = function(slider)
+  assert(slider ~= nil)
+  
+  local quests = getQuestsSet()
+  slider:SetMinMaxValues(0, math.max(#quests-1, 0))
+end  
+
+local getHighlights = function(main)
+  assert(main ~= nil)
+  
+  if nil == main.highlights or 'table' ~= type(main.highlights) then
+    main.highlights = {}
   end
-  updateSlider()
   
-  local createQuestFrame = function(questFramesContainer)
-    assert(questFramesContainer ~= nil)
-    assert(#questFrames <= MAX_QUEST_FRAMES)
-    
-    local h = questsContainer:GetHeight() / MAX_QUEST_FRAMES
+  local highlights = main.highlights
+  local operationsLimit = MAX_QUESTS
+  local operationsPerformed = 0
+  assert(#highlights <= MAX_QUESTS)
+  for i = 1, #highlights do
+    assert(highlights[i] ~= nil)
+    assert('number' == type(highlights[i]))
+    assert(highlights[i] > 0)
+    operationsPerformed = operationsPerformed + 1
+    assert(operationsPerformed <= operationsLimit)
+  end
   
-    local newQuestFrameId = #questFrames + 1
-    local newQuestFrame = CreateFrame("BUTTON", questFramesContainer:GetName() .. "Quest" .. newQuestFrameId, questFramesContainer, "SecureHandlerClickTemplate")
-    newQuestFrame:SetWidth(questFramesContainer:GetWidth())
-    newQuestFrame:SetHeight(h)
-    newQuestFrame:SetPoint("RIGHT",  questFramesContainer, "RIGHT", 0, 0)
-    newQuestFrame:SetPoint("TOP",    questFramesContainer, "TOP",   0, -h*(newQuestFrameId-1))
-    newQuestFrame:SetPoint("LEFT",   questFramesContainer, "LEFT",  0, 0)
-    newQuestFrame:SetPoint("BOTTOM", questFramesContainer, "TOP",   0, -h*(newQuestFrameId))
-    local b0 = getQuestBQuestBackdrop()
-    b0.bgFile = nil
-    newQuestFrame:SetBackdrop(b0)
-    
-    local fontFrame = newQuestFrame:CreateFontString(newQuestFrame:GetName() .. "Name", "OVERLAY", "GameFontWhite")
-    fontFrame:SetAllPoints()
-    fontFrame:SetText('Text is missing.')
-    fontFrame:Show()
-    newQuestFrame.fontFrame = fontFrame
-    
-    newQuestFrame.highlighted = false
-    newQuestFrame:RegisterForClicks("AnyUp")
-    newQuestFrame:SetScript('OnClick', function(self, event, ...)
-      if self.highlighted then
-        self.highlighted = false
-        self:SetBackdrop(getQuestBQuestBackdrop())
-      else
-        self.highlighted = true
-        self:SetBackdrop(getQuestHighlightBQuestBackdrop())
+  assert(highlights ~= nil)
+  assert('table' == type(highlights))
+  assert(#highlights <= MAX_QUESTS)
+  
+  return highlights
+end
+
+local isQuestHighlighted = function(main, givenQuest)
+  assert(main ~= nil)
+  assert(givenQuest ~= nil)
+  assert('table' == type(givenQuest))
+  
+  local result = false
+  local highlights = getHighlights(main)
+  assert(highlights ~= nil)
+  assert('table' == type(highlights))
+  for i = 1, #highlights do
+    assert(givenQuest.questId ~= nil)
+    assert('number' == type(givenQuest.questId))
+    assert(givenQuest.questId > 0)
+    result = givenQuest.questId == highlights[i] or result
+  end
+  
+  return result
+end
+
+local addHighlight = function(main, givenQuest)
+  assert(main ~= nil)
+  assert(givenQuest ~= nil)
+  assert(isValidQuest(givenQuest))
+  if not isQuestHighlighted(main, givenQuest) then
+    local questId = givenQuest.questId
+    assert(questId ~= nil)
+    assert('number' == type(questId))
+    assert(questId > 0)
+    tinsert(getHighlights(main), math.ceil(questId))
+  end
+  return
+end
+
+local removeHighlight = function(main, givenQuest)
+  assert(main ~= nil)
+  assert(givenQuest ~= nil)
+  assert(isValidQuest(givenQuest))
+  if isQuestHighlighted(main, givenQuest) then
+    local questId = givenQuest.questId
+    assert(questId ~= nil)
+    assert('number' == type(questId))
+    assert(questId > 0)
+    local highlights = getHighlights(main)
+    local removedIndexes = {}
+    for i = 1, #highlights do
+      local highlight = highlights[i]
+      assert(highlight ~= nil)
+      assert('number' == type(highlight))
+      assert(highlight > 0)
+      if questId == highlight then
+        tinsert(removedIndexes, i)
       end
-    end)
-    local b = getQuestBQuestBackdrop()
-    newQuestFrame:SetNormalTexture(b.bgFile)
-    local bh = getQuestHighlightBQuestBackdrop()
-    newQuestFrame:SetPushedTexture(bh.bgFile)
-    newQuestFrame:SetHighlightTexture(bh.bgFile)
-    
-    newQuestFrame:Show()
-  
-    return newQuestFrame
-  end
-  
-  for i = 1, MAX_QUEST_FRAMES do
-    tinsert(questFrames, createQuestFrame(questsContainer))
-  end
-  
-  local updateQuestFrame = function(givenFrame, givenQuest, givenProgress)
-    assert(givenFrame ~= nil)
-    assert(isValidQuest(givenQuest))
-    
-    local questDescription = getQuestDescription(givenQuest, givenProgress)    
-    assert(questDescription ~= nil)
-    assert("string" == type(questDescription))
-    
-    givenFrame.fontFrame:SetText(questDescription)
-    
-    givenFrame.questId = givenQuest.questId
-  end
-  
-  local cleanQuestFrame = function(givenFrame)
-    assert(givenFrame ~= nil)
-    
-    givenFrame.questId = nil
-    givenFrame.highlighted = nil
-    if givenFrame.fontFrame ~= nil then
-      givenFrame.fontFrame:SetText(nil)
     end
+    for j = 1, #removedIndexes do
+      tremove(highlights, removedIndexes[j])
+    end
+  end
+  return
+end
+
+local updateQuestFrame = function(main, givenFrame, givenQuest, givenProgress)
+  assert(main ~= nil)
+  assert(givenFrame ~= nil)
+  assert(isValidQuest(givenQuest))
+    
+  local questDescription = getQuestDescription(givenQuest, givenProgress)    
+  assert(questDescription ~= nil)
+  assert("string" == type(questDescription))
+    
+  givenFrame.text:SetText(questDescription)
+    
+  givenFrame.questId = givenQuest.questId
+  
+  if isQuestHighlighted(main, givenQuest) then
+    givenFrame:SetBackdrop(getQuestHighlightBQuestBackdrop())
+  else
     givenFrame:SetBackdrop(getQuestBQuestBackdrop())
   end
+end
   
-  local updateQuestFrames = function()
-    local quests = getQuestsSet()
-    skipAmount = math.max(math.min(slider:GetValue(), #quests-#questFrames), 0)
-    local afterSkip = skip(quests, skipAmount)
-    assert((#afterSkip == #quests - skipAmount) or (#afterSkip == 0 and #quests == 0))
-    local afterTake = take(afterSkip, #questFrames)
-    assert((#afterTake == math.min(#questFrames, #afterSkip)) or (#afterTake == 0 and #afterSkip == 0))
-    for i = 1, math.min(#questFrames, MAX_QUEST_FRAMES) do
-      local nextQuestFrame = questFrames[i]
-      local quest = afterTake[i]
-      if quest ~= nil and isValidQuest(quest) then
-        --[[assert(isValidQuest(quest))]]--
-        local progress = getQuestProgress(quest.questId)
-        updateQuestFrame(nextQuestFrame, quest, progress)
-      else
-        cleanQuestFrame(nextQuestFrame)
-      end
+local cleanQuestFrame = function(main, givenFrame)
+  assert(main ~= nil)
+  assert(givenFrame ~= nil)
+    
+  if givenFrame.questId ~= nil then
+    local quest = getQuest(givenFrame.questId)
+    if quest ~= nil then
+      removeHighlight(main, quest)
     end
   end
+  givenFrame.questId = nil
+  if givenFrame.text ~= nil then
+    givenFrame.text:SetText(nil)
+  end
+  givenFrame:SetBackdrop(getQuestBQuestBackdrop())
+end
   
-  slider:SetScript("OnValueChanged", function(self, skipAmount, ...)
+local updateQuestFrames = function(main, slider, questFrames)
+  assert(main ~= nil)
+  assert(slider ~= nil)
+  assert(questFrames ~= nil)
+  assert('table' == type(questFrames))
+  
+  local quests = getQuestsSet()
+  skipAmount = math.max(math.min(slider:GetValue(), #quests-#questFrames), 0)
+    
+  local afterSkip = skip(quests, skipAmount)
+  assert((#afterSkip == #quests - skipAmount) or (#afterSkip == 0 and #quests == 0))
+    
+  local afterTake = take(afterSkip, #questFrames)
+  assert((#afterTake == math.min(#questFrames, #afterSkip)) or (#afterTake == 0 and #afterSkip == 0))
+    
+  for i = 1, math.min(#questFrames, MAX_QUEST_FRAMES) do
+    local nextQuestFrame = questFrames[i]
+    local quest = afterTake[i]
+    if quest ~= nil and isValidQuest(quest) then
+      --[[assert(isValidQuest(quest))]]--
+      local progress = getQuestProgress(quest.questId)
+      updateQuestFrame(main, nextQuestFrame, quest, progress)
+    else
+      cleanQuestFrame(main, nextQuestFrame)
+    end
+  end
+end
+
+local show = function()
+  ShowUIPanel(BQuest)
+end
+
+local hide = function()
+  HideUIPanel(BQuest)
+end
+
+local initGUIHandlerRoot = function(root, main, slider, questFrames)
+  assert(root ~= nil)
+  assert(main ~= nil)
+  assert(slider ~= nil)
+  assert(questFrames ~= nil)
+  assert('table' == type(questFrames))
+  
+  root:HookScript('OnShow', function(self, ...)
+    updateSlider(slider)
+    updateQuestFrames(main, slider, questFrames)
+  end)
+end
+
+local initGUIHandlerMain = function(main)
+  return nil
+end
+
+local initGUIHandlerMainEntries = function(main, slider, questFrames)
+  assert(main ~= nil)
+  assert(slider ~= nil)
+  assert(questFrames ~= nil)
+  assert('table' == type(questFrames))
+  assert(#questFrames == MAX_QUEST_FRAMES)
+  
+  for i = 1, #questFrames do
+    local questFrame = questFrames[i]
+    questFrame:SetScript('OnClick', function(self, event, ...)
+      if self.questId ~= nil and 'number' == type(self.questId) and self.questId > 0 then
+        local quest = getQuest(self.questId)
+        assert(quest ~= nil)
+        assert(isValidQuest(quest))
+        if isQuestHighlighted(main, quest) then
+          removeHighlight(main, quest)
+        else
+          addHighlight(main, quest)
+        end
+        updateQuestFrames(main, slider, questFrames)
+      end
+    end)
+  end
+end
+
+local initGUIHandlerSlider = function(slider, main, questFrames)
+  assert(slider ~= nil)
+  assert(main ~= nil)
+  assert(questFrames ~= nil)
+  assert('table' == type(questFrames))
+  
+  slider:SetScript('OnValueChanged', function(self, skipAmount, ...)
     assert(skipAmount == self:GetValue())
-    updateQuestFrames() 
+    updateQuestFrames(main, slider, questFrames) 
   end)
-  
-  self:HookScript("OnShow", function(self, ...)
-    updateSlider()
-    updateQuestFrames()
-  end)
-  
+end  
+
+local initGUIHandlerNavAdd = function(navAdd)  
   navAdd:SetScript('OnClick', function(self, event, ...)
     print('TODO')
   end)
+end
+
+local initGUIHandlerNavRemove = function(navRemove, main, slider, questFrames)
+  assert(navRemove ~= nil)
+  assert(main ~= nil)
+  assert(slider ~= nil)
+  assert(questFrames ~= nil)
+  assert('table' == type(questFrames))
+  
   navRemove:SetScript('OnClick', function(self, event, ...)
-    for i = 1, #questFrames do
-      local questFrame = questFrames[i]
-      if questFrame.highlighted then
-        local questId = questFrame.questId
-        if questId ~= nil and 'number' == type(questId) and questId > 0 then
-          wipeQuest(math.ceil(questId))
-          cleanQuestFrame(questFrame)
-          updateQuestFrames()
-        end
+    local highlights = getHighlights(main)
+    for i = 1, #highlights do
+      local highlight = highlights[i]
+      if highlight ~= nil then
+      assert(highlight ~= nil)
+      assert('number' == type(highlight))
+      assert(highlight > 0)
+      
+      local quest = getQuest(highlight)
+      assert(quest ~= nil)
+      assert(isValidQuest(quest))
+      
+      wipeQuest(quest.questId)
       end
     end
+    main.highlights = {}
+    updateSlider(slider)
+    updateQuestFrames(main, slider, questFrames)
   end)
+end
+
+local initGUIHandlerNavShare = function(navShare)
   navShare:SetScript('OnClick', function(self, event, ...)
     print('TODO')
   end)
+end
+
+local initGUIHandlerNavClose = function(navClose, root)
   navClose:SetScript('OnClick', function(self, event, ...)
-    mainFrame:Hide()
+    root:Hide()
   end)
+end
+
+--[[ GUI: Init. ]]--
+
+local initGUI = function(self)
+  local root        = initGUIRoot(self)
+  local nav         = initGUINav(root)
+  local navAdd      = initGUINavAdd(nav)
+  local navRemove   = initGUINavRemove(nav)
+  local navShare    = initGUINavShare(nav)
+  local navClose    = initGUINavClose(nav)
+  local main        = initGUIMain(root)
+  local questFrames = initGUIMainEntries(main)
+  local slider      = initGUISlider(root)
+  initGUIHandlerRoot(root, main, slider, questFrames)
+  initGUIHandlerMain(main)
+  initGUIHandlerMainEntries(main, slider, questFrames)
+  initGUIHandlerSlider(slider, main, questFrames)
+  initGUIHandlerNavAdd(navAdd)
+  initGUIHandlerNavRemove(navRemove, main, slider, questFrames)
+  initGUIHandlerNavShare(navShare)
+  initGUIHandlerNavClose(navClose, root)
+  
+  updateSlider(slider)
+  updateQuestFrames(main, slider, questFrames)
 end
 
 --[[ CLI. ]]--
@@ -800,7 +1101,11 @@ local initCLI = function(self)
   --[[ TODO ]]--
 end
 
---[[ Init. ]]--
+
+--[[--
+  Initialization.
+  @section init
+]]
 
 local bquest = CreateFrame('FRAME', 'BQuest', UIParent) or {}
 
