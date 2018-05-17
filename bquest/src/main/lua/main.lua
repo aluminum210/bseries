@@ -225,22 +225,35 @@ end
 
 BQuestSavedVariables = {}
 local persistQuest = function(givenQuest)
+  assert(givenQuest ~= nil)
   assert(isValidQuest(givenQuest))
   
   if nil == BQuestSavedVariables.quests then
     BQuestSavedVariables.quests = {}
   end
   
+  local optionalErrorMessage = nil
+  
   local persistedQuests = BQuestSavedVariables.quests
   
-  local optionalErrorMessage = nil
-  if nil == persistedQuests[givenQuest.questId] then
+  local operationsLimit = MAX_QUESTS
+  local operationsPerformed = 0
+  local questsAmount = 0
+  for questId, quest in pairs(persistedQuests) do
+    questsAmount = questsAmount + 1
+    operationsPerformed = operationsPerformed + 1
+    assert(operationsPerformed <= operationsLimit)
+  end
+  
+  if nil == persistedQuests[givenQuest.questId] and questsAmount < MAX_QUESTS then
     local givenCreatedDateTable = givenQuest.createdDateTable 
     givenQuest.createdDateTable = date("*t", time(givenCreatedDateTable))
     
     persistedQuests[givenQuest.questId] = givenQuest
   elseif persistedQuests[givenQuest.questId] ~= nil and isValidQuest(persistedQuests[givenQuest.questId]) then
     optionalErrorMessage = "Quest already exists. Try creating and persisting another quest with the same attributes."
+  elseif questsAmount >= MAX_QUESTS then
+    optionalErrorMessage = 'Maximum amount of quests exceeded.'
   else
     optionalErrorMessage = "Space is not empty or some other error."
   end
@@ -333,9 +346,13 @@ end
 
 local getQuestsSet = function()
   local questsSet = {}
+  local operationsLimit = MAX_QUESTS
+  local operationsPerformed = 0
   for questId, quest in pairs(getQuestsMap()) do
     assert(isValidQuest(quest))
     tinsert(questsSet, quest)
+    operationsPerformed = operationsPerformed + 1
+    assert(operationsPerformed <= operationsLimit)
   end
   table.sort(questsSet, function(a, b)
     return time(a.createdDateTable) > time(b.createdDateTable)
@@ -576,7 +593,7 @@ local MAX_QUEST_FRAMES = 8
 local GUI_INDENT = 16
 
 local GUI_ROOT_WIDTH  = 512
-local GUI_ROOT_HEIGHT = 640
+local GUI_ROOT_HEIGHT = 512
 
 local GUI_MAIN_WIDTH  = GUI_ROOT_WIDTH  - GUI_INDENT * 2
 local GUI_MAIN_HEIGHT = GUI_ROOT_HEIGHT - GUI_INDENT * 2
@@ -597,6 +614,15 @@ local initGUIRoot = function(root)
   root:SetHeight(GUI_ROOT_HEIGHT)
   root:SetBackdrop(getDefaultBQuestBackdrop())
   root:SetPoint("CENTER", 0, 0)
+  
+  --[[ http://wowwiki.wikia.com/wiki/Creating_standard_left-sliding_frames ]]--
+  
+  root:SetAttribute("UIPanelLayout-defined",   true)
+  root:SetAttribute("UIPanelLayout-enabled",   true)
+  root:SetAttribute("UIPanelLayout-area",      "middle")
+  root:SetAttribute("UIPanelLayout-pushable",  2)
+  root:SetAttribute("UIPanelLayout-width",     GUI_ROOT_WIDTH)
+  root:SetAttribute("UIPanelLayout-whileDead", true)
   
   return root
 end
@@ -898,6 +924,14 @@ local updateQuestFrames = function(main, slider, questFrames)
       cleanQuestFrame(main, nextQuestFrame)
     end
   end
+end
+
+local show = function()
+  ShowUIPanel(BQuest)
+end
+
+local hide = function()
+  HideUIPanel(BQuest)
 end
 
 local initGUIHandlerRoot = function(root, main, slider, questFrames)
