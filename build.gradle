@@ -46,20 +46,38 @@ task('deployLocal', type: Copy) {
      * Example:
      * local.properties:
      *   addonsDir=D:/games/wow/Interface/AddOns/
+     * Remember to use Java compatible URIs for file paths!
      */   
     into addonsDir
   }
 }
 
+task('ldoc', type: Exec) {
+    /* 
+     * `ldocExecutable` is defined in `local.properties` file. 
+     * Example:
+     * local.properties:
+     *   ldocExecutable=D:\opt\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\bin\ldoc.bat
+     * Remember to use Java compatible URIs for file paths!
+     */   
+	executable ldocExecutable
+	args "${buildDir}/tmp/${project.name}/", '--all', '--dir', "${buildDir}/tmp/${project.name}/doc/"
+}
+
 copySnippets.shouldRunAfter(clean)
 copyResources.shouldRunAfter(clean)
+ldoc.shouldRunAfter(clean)
 distZip.shouldRunAfter(clean)
 assemble.shouldRunAfter(clean)
+ldoc.dependsOn(copySnippets)
+ldoc.mustRunAfter(copySnippets)
 distZip.mustRunAfter(copySnippets)
 distZip.mustRunAfter(copyResources)
+distZip.mustRunAfter(ldoc)
 deployLocal.mustRunAfter(assemble)
 assemble.dependsOn(copySnippets)
 assemble.dependsOn(copyResources)
+assemble.dependsOn(ldoc)
 assemble.dependsOn(distZip)
 
 }
