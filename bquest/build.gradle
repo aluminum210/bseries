@@ -35,7 +35,7 @@ ext.getOAuth2AccessToken = { ->
 	return oauth2token
 }
 
-task('uploadRelease', type: HttpTask, group: 'Custom') {
+task('uploadArchivesGitHub', type: HttpTask, group: 'Custom') {
     config {
         request.uri = 'https://api.github.com'
         request.headers['Authorization'] = 'token ' + getOAuth2AccessToken()
@@ -81,9 +81,9 @@ task('uploadRelease', type: HttpTask, group: 'Custom') {
 	}
 }
 
-uploadRelease.mustRunAfter(clean)
-uploadRelease.mustRunAfter(assemble)
-uploadRelease.dependsOn(assemble)
+uploadArchivesGitHub.mustRunAfter(clean)
+uploadArchivesGitHub.mustRunAfter(assemble)
+uploadArchivesGitHub.dependsOn(assemble)
 
 /* End upload. */
 
