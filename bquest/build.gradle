@@ -1,1 +1,91 @@
-version = '0.1'
+plugins {
+  /* https://github.com/http-builder-ng/gradle-http-plugin */
+  id "io.github.http-builder-ng.http-plugin" version "0.1.1"
+}
+
+/* Upload. */
+
+import io.github.httpbuilderng.http.HttpTask
+import groovyx.net.http.OkHttpBuilder
+import groovyx.net.http.CoreEncoders
+import groovyx.net.http.ApacheEncoders
+import groovyx.net.http.*
+import static groovyx.net.http.MultipartContent.multipart
+import static groovyx.net.http.ContentTypes.JSON
+import static groovyx.net.http.ContentTypes.MULTIPART_FORMDATA
+import static groovyx.net.http.ContentTypes.BINARY
+
+ext.isPrerelease = { ->
+	return project.version.endsWith('-SNAPSHOT')
+}
+
+ext.getTagName = { ->
+	return "${project.name}-${project.version}"
+}
+
+ext.getReleaseName = { ->
+	return "${project.name}-${project.version}"
+}
+
+ext.getReleaseDescription = { ->
+	return new File('README.md').text
+}
+
+ext.getOAuth2AccessToken = { ->
+	return oauth2token
+}
+
+task('uploadArchivesGitHub', type: HttpTask, group: 'Custom') {
+    config {
+        request.uri = 'https://api.github.com'
+        request.headers['Authorization'] = 'token ' + getOAuth2AccessToken()
+    }
+    /* https://developer.github.com/v3/repos/releases/#upload-a-release-asset */
+    def taskUploadURL = null
+    post {
+        request.uri.path = '/repos/aluminum210/bseries/releases'
+        /* https://http-builder-ng.github.io/http-builder-ng/asciidoc/html5/#_sending_receiving_json_data_post */
+        request.contentType = JSON[0]
+        request.body = [
+			tag_name:         getTagName(),
+			target_commitish: "master",
+			name:             getReleaseName(),
+			body:             getReleaseDescription(),
+			draft:            true, /* Change to `false` when done. */
+			prerelease:       isPrerelease()
+        ]
+        response.parser(JSON[0]) { config, response ->
+        	def responseMap = NativeHandlers.Parsers.json(config, response)
+        	taskUploadURL = responseMap.upload_url - '{?name,label}' + '?name=' + "${project.name}-${project.version}.zip"
+        	println taskUploadURL
+        }
+        response.success {response -> println 'Release created.'}
+        /*response.failure { response -> println response 
+        }*/
+    }
+    post {
+        /* 
+     	 * Requests are executed sequentially (in sync).
+     	 * Therefore, it is possible for the program to rely on `taskUploadURL` value.
+	     */
+        request.uri = taskUploadURL
+        request.contentType = 'multipart/form-data'
+        request.encoder 'multipart/form-data', ApacheEncoders.&multipart
+        request.body = multipart {
+          field 'name', "${distsDir}/${project.name}-${project.version}.zip"
+          part 'file', "${distsDir}/${project.name}-${project.version}.zip", BINARY[0], file("${distsDir}/${project.name}-${project.version}.zip")
+        }
+        response.success {response -> println 'Distribution uploaded.'}
+        /*response.failure { response -> println response 
+        }*/
+	}
+}
+
+uploadArchivesGitHub.mustRunAfter(clean)
+uploadArchivesGitHub.mustRunAfter(assemble)
+uploadArchivesGitHub.dependsOn(assemble)
+
+/* End upload. */
+
+/* https://semver.org/ */
+version = '0.1.0-SNAPSHOT'

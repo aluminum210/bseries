@@ -10,7 +10,7 @@ subprojects {
 
 apply plugin: 'base'
 
-task('copyResources', type: Copy) {
+task('copyResources', type: Copy, group: 'Custom') {
   from 'src/main/resources'
   exclude "**/*~"
   into "${buildDir}/tmp/${project.name}"
@@ -23,7 +23,7 @@ task('copyResources', type: Copy) {
   }
 }
 
-task('copySnippets', type: Copy) {
+task('copySnippets', type: Copy, group: 'Custom') {
   println('Copying...')
   into "${buildDir}/tmp/${project.name}"
   from 'src/main/lua'
@@ -31,13 +31,13 @@ task('copySnippets', type: Copy) {
   include "**/*.lua"
 }
 
-task('distZip', type: Zip) {
+task('distZip', type: Zip, group: 'Custom') {
   from fileTree("${buildDir}/tmp/")
   destinationDir file("${distsDir}")
 }
 
 
-task('deployLocal', type: Copy) {
+task('deployLocal', type: Copy, group: 'Custom') {
   /* Work-around for multi-project builds. */
   gradle.projectsEvaluated {
     from zipTree("${distsDir}/${distZip.archiveName}")
@@ -52,16 +52,36 @@ task('deployLocal', type: Copy) {
   }
 }
 
-task('ldoc', type: Exec) {
+task('ldoc', type: Exec, group: 'Custom') {
     /* 
      * `ldocExecutable` is defined in `local.properties` file. 
      * Example:
      * local.properties:
-     *   ldocExecutable=D:\opt\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\bin\ldoc.bat
+     *   ldocExecutable=D:/opt/chocolatey/lib/luarocks/luarocks-2.4.4-win32/systree/bin/ldoc.bat
      * Remember to use Java compatible URIs for file paths!
      */   
 	executable ldocExecutable
 	args "${buildDir}/tmp/${project.name}/", '--all', '--dir', "${buildDir}/tmp/${project.name}/doc/"
+}
+
+task('luacheck', type: Copy, group: 'Custom') {
+	from "${buildDir}/tmp/${project.name}/"
+	into "${buildDir}/tmp/${project.name}/"
+	include '**/*.lua'
+    /* 
+     * `luacheckExecutable` is defined in `local.properties` file. 
+     * Example:
+     * local.properties:
+     *   luacheckExecutable=luacheck
+     * Remember to use Java compatible URIs for file paths!
+     */   
+	eachFile{fileDetails -> 
+		exec{
+			executable luacheckExecutable
+			args fileDetails.file
+		}
+		fileDetails.exclude()
+	}
 }
 
 copySnippets.shouldRunAfter(clean)
@@ -69,8 +89,11 @@ copyResources.shouldRunAfter(clean)
 ldoc.shouldRunAfter(clean)
 distZip.shouldRunAfter(clean)
 assemble.shouldRunAfter(clean)
+luacheck.dependsOn(copySnippets)
+luacheck.mustRunAfter(copySnippets)
 ldoc.dependsOn(copySnippets)
 ldoc.mustRunAfter(copySnippets)
+ldoc.shouldRunAfter(luacheck)
 distZip.mustRunAfter(copySnippets)
 distZip.mustRunAfter(copyResources)
 distZip.mustRunAfter(ldoc)
@@ -78,6 +101,7 @@ deployLocal.mustRunAfter(assemble)
 assemble.dependsOn(copySnippets)
 assemble.dependsOn(copyResources)
 assemble.dependsOn(ldoc)
+assemble.dependsOn(luacheck)
 assemble.dependsOn(distZip)
 
 }
