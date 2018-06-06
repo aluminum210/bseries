@@ -64,13 +64,36 @@ task('ldoc', type: Exec, group: 'Custom') {
 	args "${buildDir}/tmp/${project.name}/", '--all', '--dir', "${buildDir}/tmp/${project.name}/doc/"
 }
 
+task('luacheck', type: Copy, group: 'Custom') {
+	from "${buildDir}/tmp/${project.name}/"
+	into "${buildDir}/tmp/${project.name}/"
+	include '**/*.lua'
+    /* 
+     * `luacheckExecutable` is defined in `local.properties` file. 
+     * Example:
+     * local.properties:
+     *   luacheckExecutable=luacheck
+     * Remember to use Java compatible URIs for file paths!
+     */   
+	eachFile{fileDetails -> 
+		exec{
+			executable luacheckExecutable
+			args fileDetails.file
+		}
+		fileDetails.exclude()
+	}
+}
+
 copySnippets.shouldRunAfter(clean)
 copyResources.shouldRunAfter(clean)
 ldoc.shouldRunAfter(clean)
 distZip.shouldRunAfter(clean)
 assemble.shouldRunAfter(clean)
+luacheck.dependsOn(copySnippets)
+luacheck.mustRunAfter(copySnippets)
 ldoc.dependsOn(copySnippets)
 ldoc.mustRunAfter(copySnippets)
+ldoc.shouldRunAfter(luacheck)
 distZip.mustRunAfter(copySnippets)
 distZip.mustRunAfter(copyResources)
 distZip.mustRunAfter(ldoc)
@@ -78,6 +101,7 @@ deployLocal.mustRunAfter(assemble)
 assemble.dependsOn(copySnippets)
 assemble.dependsOn(copyResources)
 assemble.dependsOn(ldoc)
+assemble.dependsOn(luacheck)
 assemble.dependsOn(distZip)
 
 }
