@@ -12,8 +12,7 @@ local MAX_QUESTS = 256
 
 local function getSupportedQuestGoals()
   return {
-    'CollectItem', 'DeliverItem', 'KillUnit',
-    'LearnSkill', 'UseSkill'
+    'CollectItem', 'KillUnit', 'UseSkill'
   }
 end
 
@@ -715,6 +714,8 @@ local GUI_NAV_HEIGHT = 40
 --[[local GUI_NAV_BUTTON_WIDTH  = GUI_NAV_WIDTH / 8]]--
 local GUI_NAV_BUTTON_HEIGHT = 20
 
+local GUI_TOOLTIP_LABEL_HEIGHT = 32
+
 --[[ GUI: Static. ]]--
 
 local function initGUIRoot(root)
@@ -1027,6 +1028,7 @@ end
 local function initGUITooltipFields(tooltip)
   local fields = {}
   local MAX_FIELDS = 4
+  local h = GUI_TOOLTIP_LABEL_HEIGHT
   for i = 1, MAX_FIELDS do
     local field = CreateFrame(
     'EDITBOX',
@@ -1036,12 +1038,45 @@ local function initGUITooltipFields(tooltip)
     )
     field:SetWidth(100)
     field:SetHeight(32)
-    local offset = (math.floor(MAX_FIELDS / 2) - i)*field:GetHeight()
+    local offset = (math.floor(MAX_FIELDS / 2) - i)*(field:GetHeight()+h)
     field:SetPoint('CENTER', 0, offset)
     field:Show()
     tinsert(fields, field)
   end
   return fields
+end
+
+local function initGUITooltipFieldLabels(tooltip, fields)
+  assert(tooltip ~= nil)
+
+  assert(fields ~= nil)
+  assert('table' == type(fields))
+
+  local fieldLabels = {}
+
+  for i = 1, #fields do
+    local field = fields[i]
+    local label = tooltip:CreateFontString(
+    field:GetName() .. "Label",
+    "OVERLAY",
+    "GameFontWhite"
+    )
+    label:SetWidth(field:GetWidth())
+    label:SetHeight(GUI_TOOLTIP_LABEL_HEIGHT)
+
+    label:SetPoint('RIGHT', field, 'RIGHT', 0, 0)
+    label:SetPoint('TOP', field, 'TOP', 0, 32)
+    label:SetPoint('LEFT', field, 'LEFT', 0, 0)
+    label:SetPoint('BOTTOM', field, 'TOP', 0, 0)
+
+    label:SetText('Empty label')
+
+    label:Show()
+
+    tinsert(fieldLabels, label)
+  end
+
+  return fieldLabels
 end
 
 local function initGUITooltip(root)
@@ -1343,29 +1378,6 @@ local function initGUIHandlerNavClose(navClose, root)
   navClose:SetScript('OnClick', navCloseOnClickCallback)
 end
 
-local function initGUIHandlerTooltipRadioButtons(tooltip, radioButtons)
-  assert(tooltip ~= nil)
-  assert(radioButtons ~= nil)
-  assert('table' == type(radioButtons))
-  local MAX_GOALS = 16
-  assert(#radioButtons <= MAX_GOALS)
-
-  local function radioButtonOnClickCallback(self)
-    assert(self ~= nil)
-    for i = 1, math.min(#radioButtons, MAX_GOALS) do
-      local radioButton = radioButtons[i]
-      assert(radioButton ~= nil)
-      local isChecked = self == radioButton
-      radioButton:SetChecked(isChecked)
-    end
-  end
-  for i = 1, #radioButtons do
-    local radioButton = radioButtons[i]
-    assert(radioButton ~= nil)
-    radioButton:SetScript('OnClick', radioButtonOnClickCallback)
-  end
-end
-
 local function getSelectedGoalName(radioButtons)
   assert(radioButtons ~= nil)
   assert('table' == type(radioButtons))
@@ -1392,6 +1404,89 @@ local function getSelectedGoalName(radioButtons)
   assert('string' == type(goalName))
 
   return goalName
+end
+
+local function initGUIHandlerTooltipRadioButtons(tooltip, radioButtons, fields, fieldLabels)
+  assert(tooltip ~= nil)
+
+  assert(radioButtons ~= nil)
+  assert('table' == type(radioButtons))
+  local MAX_GOALS = 16
+  assert(#radioButtons <= MAX_GOALS)
+
+  assert(fields ~= nil)
+  assert('table' == type(fields))
+
+  assert(fieldLabels ~= nil)
+  assert('table' == type(fieldLabels))
+
+  local function checkRadioButton(self)
+    assert(self ~= nil)
+    for i = 1, math.min(#radioButtons, MAX_GOALS) do
+      local radioButton = radioButtons[i]
+      assert(radioButton ~= nil)
+      local isChecked = self == radioButton
+      radioButton:SetChecked(isChecked)
+    end
+  end
+
+  local function clearGoalPerspective()
+    for i = 1, #fields do
+      fields[i]:Hide()
+    end
+    for i = 1, #fieldLabels do
+      fieldLabels[i]:SetText(nil)
+    end
+  end
+
+  local function applyCollectItemGoalPerspective()
+    clearGoalPerspective()
+    fields[1]:Show()
+    fields[2]:Show()
+    fieldLabels[1]:SetText('Item link')
+    fieldLabels[2]:SetText('Item amount')
+  end
+
+  local function applyKillUnitGoalPerspective()
+    clearGoalPerspective()
+    fields[1]:Show()
+    fields[2]:Show()
+    fieldLabels[1]:SetText("Target's name")
+    fieldLabels[2]:SetText('Kills amount')
+  end
+
+  local function applyUseSkillGoalPerspective()
+    clearGoalPerspective()
+    fields[1]:Show()
+    fields[2]:Show()
+    fields[3]:Show()
+    fieldLabels[1]:SetText('Skill link')
+    fieldLabels[2]:SetText('Uses amount')
+    fieldLabels[3]:SetText("|cff888888Target's name|r")
+  end
+
+  local function applySelectedGoalPerspective()
+    local selectedGoalName = getSelectedGoalName(radioButtons)
+    assert(selectedGoalName ~= nil)
+    assert(isSupportedQuestGoal(selectedGoalName))
+
+    if 'CollectItem' == selectedGoalName then
+      applyCollectItemGoalPerspective()
+    elseif 'KillUnit' == selectedGoalName then
+      applyKillUnitGoalPerspective()
+    elseif 'UseSkill' == selectedGoalName then
+      applyUseSkillGoalPerspective()
+    else
+      error('Unknown goal perspective to apply.')
+    end
+  end
+
+  for i = 1, #radioButtons do
+    local radioButton = radioButtons[i]
+    assert(radioButton ~= nil)
+    radioButton:SetScript('OnClick', checkRadioButton)
+    radioButton:HookScript('OnClick', applySelectedGoalPerspective)
+  end
 end
 
 local function getArgs(fields)
@@ -1477,6 +1572,10 @@ local function initGUI(givenRoot)
   assert(fields ~= nil)
   assert('table' == type(fields))
 
+  local fieldLabels = initGUITooltipFieldLabels(tooltip, fields)
+  assert(fieldLabels ~= nil)
+  assert('table' == type(fieldLabels))
+
   local radioButtons = initGUITooltipRadioButtons(tooltip)
   assert(radioButtons ~= nil)
   assert('table' == type(radioButtons))
@@ -1493,7 +1592,7 @@ local function initGUI(givenRoot)
   initGUIHandlerRoot(root, main, slider, questFrames)
   initGUIHandlerMainEntries(main, slider, questFrames)
   initGUIHandlerSlider(slider, main, questFrames)
-  initGUIHandlerTooltipRadioButtons(tooltip, radioButtons)
+  initGUIHandlerTooltipRadioButtons(tooltip, radioButtons, fields, fieldLabels)
   initGUIHandlerTooltipNavAccept(tooltipNavAccept, tooltip, radioButtons, fields,
     main, slider, questFrames
   )
