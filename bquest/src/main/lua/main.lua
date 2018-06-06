@@ -204,7 +204,7 @@ local function isValidQuest(givenQuest)
     local isDate = "table" == type(value) and "createdDateTable" == attribute
     local isString = "string" == type(value)
     local isNumber = "number" == type(value)
-    result = isString or isNumber or isDate and result
+    result = (isString or isNumber or isDate) and result
     if not result then
       optionalErrorMessage = 'Only scalar values and creation date are allowed.'
       return result, optionalErrorMessage
@@ -350,7 +350,7 @@ local function getItemIdFromItemLink(itemLink)
   exp = exp .. ":?(%d*):?(%-?%d*):?(%-?%d*):?(%d*):?(%d*):?(%-?%d*)"
   exp = exp .. "|?h?%[?([^%[%]]*)%]?|?h?|?r?"
   local _, _, _, _, Id = string.find(itemLink, exp)
-  return Id
+  return tonumber(Id)
 end
 
 local function createQuestSmart(givenGoalName, ...)
@@ -366,16 +366,20 @@ local function createQuestSmart(givenGoalName, ...)
 
   if 'CollectItem' == givenGoalName then
     local itemLink = select(1, ...)
-    assert(itemLink ~= nil)
+    assert(itemLink ~= nil, 'Cannot find the item.')
     assert('string' == type(itemLink))
 
     local itemId = getItemIdFromItemLink(itemLink)
     assert(itemId ~= nil)
-    assert('number' == type(itemId))
+    assert('number' == type(itemId), 'Expected item identifier. Got: ' .. itemId)
+    assert(itemId >= 1 and itemId <= 999999)
 
-    assert(GetItemInfo(itemId) ~= nil)
+    local template = 'Cannot find the item concept "%s" (%d).'
+    local itemConceptMissingErr = string.format(template, itemLink, itemId)
+    assert(GetItemInfo(itemId) ~= nil, itemConceptMissingErr)
 
     local itemAmount = select(2, ...)
+    itemAmount = tonumber(itemAmount)
     assert(itemAmount ~= nil)
     if 'number' ~= type(itemAmount) then
       itemAmount = 0
@@ -931,11 +935,12 @@ local function initGUITooltipRadioButtons(tooltip)
     tooltip,
     'UIRadioButtonTemplate'
     )
+    --[[ I know it's crap, I will fix it later. ]]--
     if column >= maxColumns then
       column = 0
       row = row + 1
     end
-    print(column, row, goalName)
+
     radioButton:SetWidth(32)
     radioButton:SetHeight(20)
     local w1 = (column+1)*radioButton:GetWidth()
@@ -1394,7 +1399,7 @@ local function getArgs(fields)
   fields[3]:GetText(), fields[4]:GetText()
 end
 
-local function initGUIHandlerTooltipNavAccept(navAccept, tooltip, radioButtons, fields)
+local function initGUIHandlerTooltipNavAccept(navAccept, tooltip, radioButtons, fields, main, slider, questFrames)
   assert(navAccept ~= nil)
   assert(tooltip ~= nil)
   assert(radioButtons ~= nil)
@@ -1408,6 +1413,14 @@ local function initGUIHandlerTooltipNavAccept(navAccept, tooltip, radioButtons, 
     local newQuest = createQuestSmart(selectedGoalName, getArgs(fields))
     assert(newQuest ~= nil)
     assert(isValidQuest(newQuest))
+
+    if newQuest ~= nil then
+      if 'CollectItem' == selectedGoalName then
+        updateProgressCollectItem()
+      end
+     updateQuestFrames(main, slider, questFrames)
+     updateSlider(slider)
+    end
   end
   navAccept:SetScript('OnClick', navAcceptOnClickCallback)
 
@@ -1428,8 +1441,8 @@ end
 
 --[[ GUI: Init. ]]--
 
-local function initGUI(self)
-  local root        = initGUIRoot(self)
+local function initGUI(givenRoot)
+  local root        = initGUIRoot(givenRoot)
   assert(root ~= nil)
 
   local nav         = initGUINav(root)
@@ -1481,12 +1494,44 @@ local function initGUI(self)
   initGUIHandlerMainEntries(main, slider, questFrames)
   initGUIHandlerSlider(slider, main, questFrames)
   initGUIHandlerTooltipRadioButtons(tooltip, radioButtons)
-  initGUIHandlerTooltipNavAccept(tooltipNavAccept, tooltip, radioButtons, fields)
+  initGUIHandlerTooltipNavAccept(tooltipNavAccept, tooltip, radioButtons, fields,
+    main, slider, questFrames
+  )
   initGUIHandlerTooltipNavReject(tooltipNavReject, tooltip)
   initGUIHandlerNavAdd(navAdd, tooltip)
   initGUIHandlerNavRemove(navRemove, main, slider, questFrames)
   initGUIHandlerNavShare(navShare)
   initGUIHandlerNavClose(navClose, root)
+
+  --[[
+    http://wowwiki.wikia.com/wiki/API_ChatFrame_OnHyperlinkShow
+    http://wowwiki.wikia.com/wiki/Hooking_functions
+  ]]--
+  local function onChatItemLinkClickUpdateEditBox(self, itemString, itemLink, button)
+    assert(fields ~= nil)
+    assert('table' == type(fields))
+
+    assert(self ~= nil)
+    assert('table' == type(self))
+
+    assert(itemString ~= nil)
+    assert('string' == type(itemString))
+
+    assert(itemLink ~= nil)
+    assert('string' == type(itemLink))
+
+    assert(button ~= nil)
+    assert('string' == type(button))
+
+    for i = 1, #fields do
+      local field = fields[i]
+      assert(field ~= nil)
+      if field:HasFocus() then
+        field:SetText(itemLink)
+      end
+    end
+  end
+  hooksecurefunc('ChatFrame_OnHyperlinkShow', onChatItemLinkClickUpdateEditBox)
 
   updateSlider(slider)
   updateQuestFrames(main, slider, questFrames)
