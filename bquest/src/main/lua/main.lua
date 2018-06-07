@@ -3,10 +3,11 @@ BQuest add-on for World of Warcraft: Wrath of the Lich King game.
 The purpose of the add-on is to allow players to create custom quests
 and update them automatically.
 It is also planned to implement the ability to share created quests between players.
+See:
+1. The Power of Ten (http://spinroot.com/gerard/pdf/P10.pdf)
+2. LuaCheck (https://github.com/mpeterv/luacheck)
+3. LDoc (https://stevedonovan.github.io/ldoc/)
 @script bquest
-@see The Power of Ten (http://spinroot.com/gerard/pdf/P10.pdf)
-@see LuaCheck (https://github.com/mpeterv/luacheck)
-@see LDoc (https://stevedonovan.github.io/ldoc/)
 ]]
 
 --[[--
@@ -149,9 +150,6 @@ Takes not yet valid quest stub, and then returns a valid quest,
 with all add-on metadata added.
 @function applyDefaultAttributes
 @param newQuest a quest under creation, not yet valid.
-@see createQuestCastSpell
-@see createQuestCollectItem
-@see createQuestKillUnit
 ]]
 local function applyDefaultAttributes(newQuest)
   newQuest.createdDateTable = date("*t")
@@ -231,7 +229,7 @@ local function isValidItemId(itemIdToCheck)
   end
 
   --[[ The `GetItemInfo` check may fail if the item concept exists,
-    but was not encountered by the player. ]]--
+  but was not encountered by the player. ]]--
   result = nil ~= GetItemInfo(itemIdToCheck) and result
   if not result then
     optionalErrorMessage = 'No item concept with the given identifier found.'
@@ -304,7 +302,6 @@ Check if given integer corresponds to a spell indentifier in-game.
 @param spellIdToCheck
 @return result
 @return optionalErrorMessage
-@see createQuestCastSpell
 ]]
 local function isValidSpellId(spellIdToCheck)
   assert(spellIdToCheck ~= nil)
@@ -632,11 +629,11 @@ end
 
 --[[--
 Events that correspond to a quest are aggregated in a separate from the quest table.
-This function returns a progress table 
+This function returns a progress table
 corresponding to a valid persisted quest of given identifier.
 Unlike quest tables, progress tables do not have a specified format.
 Therefore there is no valid progress table.
-However, usually a progress table has the same fields 
+However, usually a progress table has the same fields
 as the quest progress in which it represents.
 @function getQuestProgress
 @param posisitve integer; identifier of a valid persisted quest
@@ -731,7 +728,6 @@ end
 
 --[[--
 Deprecated function. Use `GetItemInfo` instead.
-@see GetItemInfo
 ]]
 local function requestItemName(itemId)
   assert(itemId ~= nil)
@@ -778,7 +774,7 @@ therefore it is environment specific, therefore not in the `core` section.
 @function getQuestDescription
 @param givenQuest valid quest table
 @param givenProgress progress on the given quest
-@return string; localized human readeable description of the quest 
+@return string; localized human readeable description of the quest
 ]]
 local function getQuestDescription(givenQuest, givenProgress)
   assert(isValidQuest(givenQuest))
@@ -862,12 +858,9 @@ end
 --[[--
 Update (mutate and persist) progress on all quests according to the given callback.
 @function updateProgress
-@param callback to which quest and it's progress are passed; 
-it is expected to mutate the progress depending on the quest's data, 
+@param callback to which quest and it's progress are passed;
+it is expected to mutate the progress depending on the quest's data,
 and not under any circumstance mutate the quest itself
-@see updateProgressCollectItem
-@see updateProgressCastSpell
-@see updateProgressKillUnit
 @see initGUIHandlerRoot
 ]]
 local function updateProgress(callback)
@@ -946,7 +939,7 @@ local function updateProgressCastSpell(givenSpellId, givenOptionalTargetUnitName
     if 'CastSpell' == quest.goalName then
       if quest.spellId == givenSpellId then
         if (nil == quest.optionalTargetUnitName or
-           givenOptionalTargetUnitName == quest.optionalTargetUnitName) then
+        givenOptionalTargetUnitName == quest.optionalTargetUnitName) then
           if nil == progress.castsAmount then
             progress.castsAmount = 0
           end
@@ -1497,7 +1490,7 @@ local function initGUITooltipFieldLabels(tooltip, fields)
 end
 
 --[[--
-Initializes a container that will hold input fields and buttons 
+Initializes a container that will hold input fields and buttons
 for creation of new quests.
 @function initGUITooltip
 @see initGUITooltipFieldLabels
@@ -1546,7 +1539,7 @@ local function updateSlider(slider)
 end
 
 --[[--
-Returns a set of valid quest identifiers that are 
+Returns a set of valid quest identifiers that are
 selected in the GUI by the player
 to be removed or shared later.
 @function getHighlights
@@ -1608,8 +1601,6 @@ Adds the given quest to the highlighted in the GUI by the player.
 @function addHighlight
 @param main main frame
 @param givenQuest valid quest table
-@see getHighlights
-@see addHighlight
 ]]
 local function addHighlight(main, givenQuest)
   assert(main ~= nil)
@@ -1630,8 +1621,6 @@ Removes the given quest from the highlighted in the GUI by the player.
 @function addHighlight
 @param main main frame
 @param givenQuest valid quest table
-@see getHighlights
-@see removeHighlight
 ]]
 local function removeHighlight(main, givenQuest)
   assert(main ~= nil)
@@ -1744,7 +1733,7 @@ end
 
 --[[--
 Initializes event listener that is used to update progress
-for supported quest types. 
+for supported quest types.
 @function initGUIHandlerRoot
 @see updateProgress
 ]]
@@ -1794,9 +1783,7 @@ end
 Initializes event listener for highlighting main data entries
 in the GUI.
 @function initGUIHandlerMainEntries
-@see getHighlights
-@see removeHighlight
-@see addHighlight
+@see isQuestHighlighted
 ]]
 local function initGUIHandlerMainEntries(main, slider, questFrames)
   assert(main ~= nil)
@@ -2100,8 +2087,8 @@ local function initGUIHandlerTooltipNavAccept(navAccept, tooltip, radioButtons, 
       if 'CollectItem' == selectedGoalName then
         updateProgressCollectItem()
       end
-     updateQuestFrames(main, slider, questFrames)
-     updateSlider(slider)
+      updateQuestFrames(main, slider, questFrames)
+      updateSlider(slider)
     end
   end
   navAccept:SetScript('OnClick', navAcceptOnClickCallback)
@@ -2191,7 +2178,7 @@ local function initGUI(givenRoot)
   initGUIHandlerSlider(slider, main, questFrames)
   initGUIHandlerTooltipRadioButtons(tooltip, radioButtons, fields, fieldLabels)
   initGUIHandlerTooltipNavAccept(tooltipNavAccept, tooltip, radioButtons, fields,
-    main, slider, questFrames
+  main, slider, questFrames
   )
   initGUIHandlerTooltipNavReject(tooltipNavReject, tooltip)
   initGUIHandlerNavAdd(navAdd, tooltip)
@@ -2200,8 +2187,8 @@ local function initGUI(givenRoot)
   initGUIHandlerNavClose(navClose, root)
 
   --[[
-    http://wowwiki.wikia.com/wiki/API_ChatFrame_OnHyperlinkShow
-    http://wowwiki.wikia.com/wiki/Hooking_functions
+  http://wowwiki.wikia.com/wiki/API_ChatFrame_OnHyperlinkShow
+  http://wowwiki.wikia.com/wiki/Hooking_functions
   ]]--
   local function onChatItemLinkClickUpdateEditBox(self, itemString, itemLink, button)
     assert(fields ~= nil)
