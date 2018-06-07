@@ -1,27 +1,34 @@
 --[[--
 BQuest add-on for World of Warcraft: Wrath of the Lich King game.
+The purpose of the add-on is to allow players to create custom quests
+and update them automatically.
+It is also planned to implement the ability to share created quests between players.
 @script bquest
+@see The Power of Ten (http://spinroot.com/gerard/pdf/P10.pdf)
+@see LuaCheck (https://github.com/mpeterv/luacheck)
+@see LDoc (https://stevedonovan.github.io/ldoc/)
 ]]
 
 --[[--
-Constants.
-@section constants
+Core.
+Add-on logic, ignorant of the GUI or CLI or environment it's executed in.
+Some of it is exposed via global variables,
+to be available via game console and not only GUI.
+@section core
 ]]
+
 local MAX_ATTRIBUTES = 16
 local MAX_QUESTS = 256
 
+--[[--
+Returns a set of names of all supported quest goals.
+@return table of names that are strings
+]]
 local function getSupportedQuestGoals()
   return {
     'CastSpell', 'CollectItem', 'KillUnit'
   }
 end
-
-
---[[--
-Core.
-Add-on logic, ignorant of the GUI or CLI or environment it's executed it.
-@section core
-]]
 
 --[[--
 Check if goal of given name is supported by the rest of the add-on.
@@ -48,6 +55,14 @@ local function isSupportedQuestGoal(targetGoalName)
   return result
 end
 
+--[[--
+Check if given quest is well formed.
+For example, it ensures that the most mandatory fields are defined.
+@function isValidQuest
+@param givenQuest a table that is a quest
+@return result boolean `true` if the queset is valid; `false` otherwise.
+@return optionalErrorMessage string that is to be used in assertions
+]]
 local function isValidQuest(givenQuest)
   assert(givenQuest ~= nil)
   assert("table" == type(givenQuest))
@@ -129,6 +144,15 @@ local function isValidQuest(givenQuest)
   return result, optionalErrorMessage
 end
 
+--[[--
+Takes not yet valid quest stub, and then returns a valid quest,
+with all add-on metadata added.
+@function applyDefaultAttributes
+@param newQuest a quest under creation, not yet valid.
+@see createQuestCastSpell
+@see createQuestCollectItem
+@see createQuestKillUnit
+]]
 local function applyDefaultAttributes(newQuest)
   newQuest.createdDateTable = date("*t")
 
@@ -174,6 +198,15 @@ local function applyDefaultAttributes(newQuest)
   return newQuest
 end
 
+--[[--
+Checks if given number corresponds to an item in the game.
+@function isValidItemId
+@param itemIdToCheck integer to check for validity
+@return result boolean true if valid; false otherwise
+@return optionalErrorMessage
+@see createQuestCollectItem
+@see updateProgressCollectItem
+]]
 local function isValidItemId(itemIdToCheck)
   assert(itemIdToCheck ~= nil)
   local optionalErrorMessage = nil
@@ -208,6 +241,14 @@ local function isValidItemId(itemIdToCheck)
   return result, optionalErrorMessage
 end
 
+--[[--
+Create a quest that is a table,
+that later can be used to track aquisition of items in the game.
+@function createQuestCollectItem
+@param givenItemId integer; identifier of an item to be tracked
+@param givenItemAmount positive integer; desired amount of the item
+@return newQuest
+]]
 local function createQuestCollectItem(givenItemId, givenItemAmount)
   assert(givenItemId ~= nil)
   assert(isValidItemId(givenItemId))
@@ -227,6 +268,14 @@ local function createQuestCollectItem(givenItemId, givenItemAmount)
   return newQuest
 end
 
+--[[--
+Create a quest that is a table,
+that later can be used to track destruction of units in the game.
+@function createQuestKillUnit
+@param givenVictimUnitName string; unit name of the target to be killed in-game
+@param givenOptionalKillsAmount positive integer; assumed 1 if `nil` is given
+@return newQuest table
+]]
 local function createQuestKillUnit(givenVictimUnitName, givenOptionalKillsAmount)
   assert(givenVictimUnitName ~= nil)
   assert("string" == type(givenVictimUnitName))
@@ -249,6 +298,14 @@ local function createQuestKillUnit(givenVictimUnitName, givenOptionalKillsAmount
   return newQuest
 end
 
+--[[--
+Check if given integer corresponds to a spell indentifier in-game.
+@function isValidSpellId
+@param spellIdToCheck
+@return result
+@return optionalErrorMessage
+@see createQuestCastSpell
+]]
 local function isValidSpellId(spellIdToCheck)
   assert(spellIdToCheck ~= nil)
   local optionalErrorMessage = nil
@@ -281,6 +338,14 @@ local function isValidSpellId(spellIdToCheck)
   return result, optionalErrorMessage
 end
 
+--[[--
+Create a quest that can be later used to track spell casts.
+Optionally limited to a specific target.
+@function createQuestSpellCast
+@param givenSkillId positive integer that is spell unique identifier
+@param givenUsagesAmount positive integer that is amount of spell casts expected to occurr
+@param givenOptionalTargetUnitName string, nullable; limits tracking to this target, if given
+]]
 local function createQuestCastSpell(givenSkillId, givenUsagesAmount, givenOptionalTargetUnitName)
   assert(givenSkillId ~= nil)
   assert(isValidSpellId(givenSkillId))
@@ -315,10 +380,25 @@ end
 
 --[[--
 Persistence.
+Quests created with functions defined in `core` section are not saved anywhere
+by default.
+This section defines functions that allow to serialize created quests in plain-text.
+To do this, built-in game Saved Variables mechanism is used.
 @section persistence
+@see http://wowwiki.wikia.com/wiki/SavedVariables
+@see http://wowwiki.wikia.com/wiki/Saving_variables_between_game_sessions
 ]]
 
 BQuestSavedVariables = {}
+
+--[[--
+Inserts given valid quest into global table that will end up serialized.
+Notice that the script enforces a limit on how many quests can be serialized.
+@function persistQuest
+@param givenQuest a valid quest that will be persisted
+@return result boolean; `true` if the quest ended up in the data source
+@return optionalErrorMessage
+]]
 local function persistQuest(givenQuest)
   assert(givenQuest ~= nil)
   assert(isValidQuest(givenQuest))
@@ -355,6 +435,12 @@ local function persistQuest(givenQuest)
   return givenQuest == persistedQuests[givenQuest.questId], optionalErrorMessage
 end
 
+--[[--
+Remove a valid quest of given identifier from the data storage.
+@function wipeQuest
+@param givenQuestId positive integer
+@return boolean; `true` if quest of given id exited and was removed
+]]
 local function wipeQuest(givenQuestId)
   assert(givenQuestId ~= nil)
   assert("number" == type(givenQuestId))
@@ -378,10 +464,6 @@ local function wipeQuest(givenQuestId)
   return questExisted and questWiped
 end
 
---[[ Core: progress. ]]--
-
---[[ TODO ]]--
-
 --[[ Public API. ]]--
 
 local function getItemIdFromItemLink(itemLink)
@@ -404,6 +486,10 @@ local function getSpellIdFromSpellLink(spellLink)
   return tonumber(Id)
 end
 
+--[[--
+Used to create and persist quests with arguments passed from the GUI.
+@see initGUIHandlerTooltipNavAccept
+]]
 local function createQuestSmart(givenGoalName, ...)
   --[[
   TODO
@@ -476,9 +562,20 @@ end
 
 --[[--
 Query processing.
+Functions in this section can be considered as core,
+but they rely on the persistence mechamism, that is environment-specific.
+These functions are used to read the add-on's data.
 @section queries
 ]]
 
+--[[--
+Quickly return a map of all persisted quests,
+where keys are positive integers that is quest identifiers,
+and values are quest tables, that can possibly be invalid.
+@function getQuestsMap
+@see getQuestsSet
+@see getQuest
+]]
 local function getQuestsMap()
   if nil == BQuestSavedVariables then
     BQuestSavedVariables = {}
@@ -489,6 +586,13 @@ local function getQuestsMap()
   return BQuestSavedVariables.quests
 end
 
+--[[--
+Get a specific valid persisted quest by it's identifier,
+if one exists.
+@function getQuest
+@param questId positive integer that is quest identifier
+@return valid quest table or nil
+]]
 local function getQuest(questId)
   assert(questId ~= nil)
   assert('number' == type(questId))
@@ -502,6 +606,14 @@ local function getQuest(questId)
   return quest
 end
 
+--[[--
+Returns a set that represents all valid persisted quests.
+Due to additional processing, it is slower than `getQuestsMap`.
+Yet it is safer and therefore recommended.
+Do not rely on ordering.
+@function getQuestsSet
+@return table of persisted valid quests
+]]
 local function getQuestsSet()
   local questsSet = {}
   local operationsLimit = MAX_QUESTS
@@ -518,6 +630,18 @@ local function getQuestsSet()
   return questsSet
 end
 
+--[[--
+Events that correspond to a quest are aggregated in a separate from the quest table.
+This function returns a progress table 
+corresponding to a valid persisted quest of given identifier.
+Unlike quest tables, progress tables do not have a specified format.
+Therefore there is no valid progress table.
+However, usually a progress table has the same fields 
+as the quest progress in which it represents.
+@function getQuestProgress
+@param posisitve integer; identifier of a valid persisted quest
+@see updateProgress
+]]
 local function getQuestProgress(questId)
   assert(questId ~= nil)
   assert("number" == type(questId))
@@ -605,6 +729,10 @@ local function take(targetTable, takeAmount)
   return filtered
 end
 
+--[[--
+Deprecated function. Use `GetItemInfo` instead.
+@see GetItemInfo
+]]
 local function requestItemName(itemId)
   assert(itemId ~= nil)
   assert("number" == type(itemId))
@@ -616,6 +744,12 @@ local function requestItemName(itemId)
   return itemName
 end
 
+--[[--
+Utility function used in updating progress on item-related quests.
+@function requestPlayerItems
+@return table of item information on items owned by the local player
+@see updateProgressCollectItem
+]]
 local function requestPlayerItems()
   local containers = {-4, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
   local items = {}
@@ -636,6 +770,16 @@ local function requestPlayerItems()
   return items
 end
 
+--[[--
+Returns union of a given quest and progress on it
+formatted as a string.
+Additionally, it aggregates the result using the game's API,
+therefore it is environment specific, therefore not in the `core` section.
+@function getQuestDescription
+@param givenQuest valid quest table
+@param givenProgress progress on the given quest
+@return string; localized human readeable description of the quest 
+]]
 local function getQuestDescription(givenQuest, givenProgress)
   assert(isValidQuest(givenQuest))
   assert(givenProgress ~= nil)
@@ -690,10 +834,20 @@ end
 
 --[[--
 Command processing.
+Functions in this section can be considered as core,
+but they rely on the persistence mechamism, that is environment-specific.
+These functions are used to manipulate the add-on's data.
 @section commands
 ]]
 
 --[[ TODO Refactor and remove callbacks. ]]--
+--[[--
+For every persisted quest, execute the given callback.
+Note that this funcion has limit of operations.
+@function forQuests
+@param callback to this callback every persisted valid quest is passed
+@see updateProgress
+]]
 local function forQuests(callback)
   local operationsLimit = MAX_QUESTS
   local operationsPerformed = 0
@@ -705,6 +859,17 @@ local function forQuests(callback)
   end
 end
 
+--[[--
+Update (mutate and persist) progress on all quests according to the given callback.
+@function updateProgress
+@param callback to which quest and it's progress are passed; 
+it is expected to mutate the progress depending on the quest's data, 
+and not under any circumstance mutate the quest itself
+@see updateProgressCollectItem
+@see updateProgressCastSpell
+@see updateProgressKillUnit
+@see initGUIHandlerRoot
+]]
 local function updateProgress(callback)
   forQuests(function(quest)
   local progress = getQuestProgress(quest.questId)
@@ -713,6 +878,14 @@ local function updateProgress(callback)
   end)
 end
 
+--[[--
+Reads from the game how many of which items the player posseses,
+checks if the player tracks them with this add-on,
+and if so, updates the add-on's data accordingly.
+@function updateProgressCollectItem
+@see updateProgress
+@see initGUIHandlerRoot
+]]
 local function updateProgressCollectItem()
   local items = requestPlayerItems()
   updateProgress(function(quest, progress)
@@ -728,6 +901,14 @@ local function updateProgressCollectItem()
   end)
 end
 
+--[[--
+Increments kill count of each quest that tracks kills of the unit,
+which name was given.
+@function updateProgressKillUnit
+@param givenVictimName string that is in-game name of a unit that is tracked
+@see updateProgress
+@see initGUIHandlerRoot
+]]
 local function updateProgressKillUnit(givenVictimName)
   assert(givenVictimName ~= nil)
   assert('string' == type(givenVictimName))
@@ -745,6 +926,18 @@ local function updateProgressKillUnit(givenVictimName)
   updateProgress(updateProgressKillUnitCallback)
 end
 
+--[[--
+Increments cast count of each quest that tracks casts of the spell,
+which identifier was given.
+If quest limited itself to specific target only,
+then the function is expected to be called with second optional argument,
+that is unit's name.
+@function updateProgressKillUnit
+@param givenSpellId positive integer
+@param givenOptionalTargetUnitName nullable string
+@see updateProgress
+@see initGUIHandlerRoot
+]]
 local function updateProgressCastSpell(givenSpellId, givenOptionalTargetUnitName)
   assert(givenSpellId ~= nil)
   assert(isValidSpellId(givenSpellId))
@@ -767,8 +960,17 @@ end
 
 --[[ TODO ]]--
 
---[[ API. ]]--
+--[[--
+Public API.
+@section api
+]]--
 
+--[[--
+Expose subset of the add-on's functions via global variables
+to the in-game console.
+@param root frame of the add-on that is "BQuest"
+@see init
+]]
 local function initAPI(root)
   root.api = {}
   root.api.createQuestCollectItem = createQuestCollectItem
@@ -780,7 +982,18 @@ end
 
 --[[--
 GUI.
+All functions that customize the game GUI,
+are defined in this section.
+Every function defines it's dependencies as explicitly as possible,
+by avoiding using global variables, that is frame names,
+whenever possible.
+Instead, every frame is passed to every other frame initializer that requires it
+as an argument, that is local variable.
+However, every frame created by the add-on has a name, that is presence in the table of globals.
+This is done so that other developers can extend this add-on without modifying it's code.
 @section gui
+@see initGUI
+@see init
 ]]
 
 --[[ GUI: Constants. ]]--
@@ -841,6 +1054,11 @@ local GUI_TOOLTIP_LABEL_HEIGHT = 32
 
 --[[ GUI: Static. ]]--
 
+--[[--
+Initializes root frame of the add-on.
+Main and root frames are distinct!
+Root frame holds main frame, as well as most others.
+]]
 local function initGUIRoot(root)
   root:SetWidth(GUI_ROOT_WIDTH)
   root:SetHeight(GUI_ROOT_HEIGHT)
@@ -859,6 +1077,15 @@ local function initGUIRoot(root)
   return root
 end
 
+--[[--
+Initializes main frame of the add-on.
+The main frame holds data entries of the add-on.
+The main frame's parent is the root frame.
+@see initGUIRoot
+@see createQuestFrame
+@see getHighlights
+@see initGUISlider
+]]
 local function initGUIMain(root)
   local mainParent = root
   local main = CreateFrame('FRAME', mainParent:GetName() .. 'Main', mainParent)
@@ -871,6 +1098,10 @@ local function initGUIMain(root)
   return main
 end
 
+--[[--
+Utility function to create entry frames in the main frame.
+@function createQuestFrame
+]]
 local function createQuestFrame(questParent, newQuestFrameId)
   assert(questParent ~= nil)
 
@@ -915,6 +1146,11 @@ local function createQuestFrame(questParent, newQuestFrameId)
   return newQuestFrame
 end
 
+--[[--
+@function initGUIMainEntries
+@see initGUIMain
+@see createQuestFrame
+]]
 local function initGUIMainEntries(main)
   local mainEntries = {}
   for i = 1, MAX_QUEST_FRAMES do
@@ -923,6 +1159,11 @@ local function initGUIMainEntries(main)
   return mainEntries
 end
 
+--[[--
+Initializes simplistic scroll for the main frame's entries.
+@function initGUISlider
+@see initGUIMain
+]]
 local function initGUISlider(root)
   local sliderParent = root
   local slider = CreateFrame(
@@ -950,6 +1191,11 @@ local function initGUISlider(root)
   return slider
 end
 
+--[[--
+Initializes a button responsible for displaying pop-up for creating new quests.
+@function initGUINavAdd
+@see initGUINav
+]]
 local function initGUINavAdd(nav)
   local navAdd = CreateFrame(
   'BUTTON',
@@ -966,6 +1212,10 @@ local function initGUINavAdd(nav)
   return navAdd
 end
 
+--[[--
+Initialzes a button responsible for deleting highlighted quests.
+@function initGUINavRemove
+]]
 local function initGUINavRemove(nav)
   local navRemove = CreateFrame(
   'BUTTON',
@@ -982,7 +1232,10 @@ local function initGUINavRemove(nav)
 
   return navRemove
 end
-
+--[[--
+Initialzes a button responsible for sharing highlighted quests with other players.
+@function initGUINavShare
+]]
 local function initGUINavShare(nav)
   local navShare = CreateFrame(
   'BUTTON',
@@ -999,6 +1252,10 @@ local function initGUINavShare(nav)
   return navShare
 end
 
+--[[--
+Initialzes a button responsible for hiding the root frame.
+@function initGUINavClose
+]]
 local function initGUINavClose(nav)
   local navClose = CreateFrame(
   'BUTTON',
@@ -1015,6 +1272,14 @@ local function initGUINavClose(nav)
   return navClose
 end
 
+--[[--
+Initialzes a container for main functionality buttons.
+@function initGUINav
+@see initGUINavAdd
+@see initGUINavClose
+@see initGUINavShare
+@see initGUINavRemove
+]]
 local function initGUINav(root)
   local navParent = root
   local nav = CreateFrame('FRAME', navParent:GetName() .. 'Nav', navParent)
@@ -1029,6 +1294,10 @@ local function initGUINav(root)
   return nav
 end
 
+--[[--
+Initialzes a quest type selector.
+@function initGUITooltipRadioButtons
+]]
 local function initGUITooltipRadioButtons(tooltip)
   assert(tooltip ~= nil)
 
@@ -1089,6 +1358,11 @@ local function initGUITooltipRadioButtons(tooltip)
   return radioButtons
 end
 
+--[[--
+Initializes a button that is responsible for creating a new quest,
+based on earlier entered data.
+@function initGUITooltipNavAccept
+]]
 local function initGUITooltipNavAccept(tooltip, tooltipNav)
   assert(tooltip ~= nil)
   assert(tooltipNav ~= nil)
@@ -1111,6 +1385,10 @@ local function initGUITooltipNavAccept(tooltip, tooltipNav)
   return tooltipNavAccept
 end
 
+--[[--
+Initializes a button that is responsible for hiding quest creation pop-up.
+@function initGUITooltipNavReject
+]]
 local function initGUITooltipNavReject(tooltip, tooltipNav)
   assert(tooltip ~= nil)
   assert(tooltipNav ~= nil)
@@ -1133,6 +1411,12 @@ local function initGUITooltipNavReject(tooltip, tooltipNav)
   return tooltipNavReject
 end
 
+--[[--
+@function initGUITooltipNav
+@see initGUITooltipNavAccept
+@see initGUITooltipNavReject
+@see initGUITooltipFields
+]]
 local function initGUITooltipNav(tooltip)
   assert(tooltip ~= nil)
 
@@ -1148,6 +1432,11 @@ local function initGUITooltipNav(tooltip)
   return tooltipNav
 end
 
+--[[--
+Initializes input fields that are used to create new quests.
+@function initGUITooltipFields
+@see createQuestSmart
+]]
 local function initGUITooltipFields(tooltip)
   local fields = {}
   local MAX_FIELDS = 4
@@ -1169,6 +1458,11 @@ local function initGUITooltipFields(tooltip)
   return fields
 end
 
+--[[--
+Initializes lables that will contain localized descriptions of input fields.
+@function initGUITooltipFieldLabels
+@see initGUITooltipFields
+]]
 local function initGUITooltipFieldLabels(tooltip, fields)
   assert(tooltip ~= nil)
 
@@ -1202,6 +1496,13 @@ local function initGUITooltipFieldLabels(tooltip, fields)
   return fieldLabels
 end
 
+--[[--
+Initializes a container that will hold input fields and buttons 
+for creation of new quests.
+@function initGUITooltip
+@see initGUITooltipFieldLabels
+@see initGUITooltipFields
+]]
 local function initGUITooltip(root)
   assert(root ~= nil)
 
@@ -1233,6 +1534,10 @@ end
 
 --[[ GUI: Handlers. ]]--
 
+--[[--
+Resizes the scroll (slider) accordingly to the amount of quests persisted.
+@function updateSlider
+]]
 local function updateSlider(slider)
   assert(slider ~= nil)
 
@@ -1240,6 +1545,12 @@ local function updateSlider(slider)
   slider:SetMinMaxValues(0, math.max(#quests-1, 0))
 end
 
+--[[--
+Returns a set of valid quest identifiers that are 
+selected in the GUI by the player
+to be removed or shared later.
+@function getHighlights
+]]
 local function getHighlights(main)
   assert(main ~= nil)
 
@@ -1266,6 +1577,13 @@ local function getHighlights(main)
   return highlights
 end
 
+--[[--
+Check if the given quest is highlighted in the GUI by the player.
+@function isQuestHighlighted
+@param main main frame
+@param givenQuest valid quest table
+@see getHighlights
+]]
 local function isQuestHighlighted(main, givenQuest)
   assert(main ~= nil)
   assert(givenQuest ~= nil)
@@ -1285,6 +1603,14 @@ local function isQuestHighlighted(main, givenQuest)
   return result
 end
 
+--[[--
+Adds the given quest to the highlighted in the GUI by the player.
+@function addHighlight
+@param main main frame
+@param givenQuest valid quest table
+@see getHighlights
+@see addHighlight
+]]
 local function addHighlight(main, givenQuest)
   assert(main ~= nil)
   assert(givenQuest ~= nil)
@@ -1299,6 +1625,14 @@ local function addHighlight(main, givenQuest)
   return
 end
 
+--[[--
+Removes the given quest from the highlighted in the GUI by the player.
+@function addHighlight
+@param main main frame
+@param givenQuest valid quest table
+@see getHighlights
+@see removeHighlight
+]]
 local function removeHighlight(main, givenQuest)
   assert(main ~= nil)
   assert(givenQuest ~= nil)
@@ -1326,6 +1660,10 @@ local function removeHighlight(main, givenQuest)
   return
 end
 
+--[[--
+Updates a single main data entry accordingly to the given progress table.
+@function updateQuestFrame
+]]
 local function updateQuestFrame(main, givenFrame, givenQuest, givenProgress)
   assert(main ~= nil)
   assert(givenFrame ~= nil)
@@ -1346,6 +1684,11 @@ local function updateQuestFrame(main, givenFrame, givenQuest, givenProgress)
   end
 end
 
+--[[--
+Removes highlights and clears data from the given main data entry.
+@function cleanQuestFrame
+@see updateQuestFrame
+]]
 local function cleanQuestFrame(main, givenFrame)
   assert(main ~= nil)
   assert(givenFrame ~= nil)
@@ -1363,6 +1706,12 @@ local function cleanQuestFrame(main, givenFrame)
   givenFrame:SetBackdrop(getQuestBQuestBackdrop())
 end
 
+--[[--
+Updates data in the main entries depending on the position of the scroll.
+@function updateQuestFrames
+@see cleanQuestFrame
+@see updateQuestFrame
+]]
 local function updateQuestFrames(main, slider, questFrames)
   assert(main ~= nil)
   assert(slider ~= nil)
@@ -1393,6 +1742,12 @@ local function updateQuestFrames(main, slider, questFrames)
   end
 end
 
+--[[--
+Initializes event listener that is used to update progress
+for supported quest types. 
+@function initGUIHandlerRoot
+@see updateProgress
+]]
 local function initGUIHandlerRoot(root, main, slider, questFrames)
   assert(root ~= nil)
   assert(main ~= nil)
@@ -1435,6 +1790,14 @@ local function initGUIHandlerRoot(root, main, slider, questFrames)
   root:HookScript('OnShow', rootOnShowHook)
 end
 
+--[[--
+Initializes event listener for highlighting main data entries
+in the GUI.
+@function initGUIHandlerMainEntries
+@see getHighlights
+@see removeHighlight
+@see addHighlight
+]]
 local function initGUIHandlerMainEntries(main, slider, questFrames)
   assert(main ~= nil)
   assert(slider ~= nil)
@@ -1462,6 +1825,11 @@ local function initGUIHandlerMainEntries(main, slider, questFrames)
   end
 end
 
+--[[--
+Initializes an event listener that manages the scroll.
+@function initGUIHandlerSlider
+@see updateQuestFrames
+]]
 local function initGUIHandlerSlider(slider, main, questFrames)
   assert(slider ~= nil)
   assert(main ~= nil)
@@ -1475,6 +1843,9 @@ local function initGUIHandlerSlider(slider, main, questFrames)
   slider:SetScript('OnValueChanged', sliderOnValueChangedCallback)
 end
 
+--[[--
+@function initGUIHandlerNavAdd
+]]
 local function initGUIHandlerNavAdd(navAdd, tooltip)
   assert(navAdd ~= nil)
   assert(tooltip ~= nil)
@@ -1485,6 +1856,9 @@ local function initGUIHandlerNavAdd(navAdd, tooltip)
   navAdd:SetScript('OnClick', navAddOnClickCallback)
 end
 
+--[[--
+@function initGUIHandlerNavRemove
+]]
 local function initGUIHandlerNavRemove(navRemove, main, slider, questFrames)
   assert(navRemove ~= nil)
   assert(main ~= nil)
@@ -1515,6 +1889,9 @@ local function initGUIHandlerNavRemove(navRemove, main, slider, questFrames)
   navRemove:SetScript('OnClick', navRemoveOnClickCallback)
 end
 
+--[[--
+@function initGUIHandlerNavShare
+]]
 local function initGUIHandlerNavShare(navShare)
   local function navShareOnClickCallback()
     print('TODO')
@@ -1522,6 +1899,9 @@ local function initGUIHandlerNavShare(navShare)
   navShare:SetScript('OnClick', navShareOnClickCallback)
 end
 
+--[[--
+@function initGUIHandlerNavClose
+]]
 local function initGUIHandlerNavClose(navClose, root)
   local function navCloseOnClickCallback()
     HideUIPanel(root)
@@ -1529,6 +1909,11 @@ local function initGUIHandlerNavClose(navClose, root)
   navClose:SetScript('OnClick', navCloseOnClickCallback)
 end
 
+--[[--
+Returns supported quest goal name that was selected in the GUI by the player.
+@function getSelectedGoalName
+@param string; name of the selected and supported quest goal that is quest type
+]]
 local function getSelectedGoalName(radioButtons)
   assert(radioButtons ~= nil)
   assert('table' == type(radioButtons))
@@ -1557,6 +1942,12 @@ local function getSelectedGoalName(radioButtons)
   return goalName
 end
 
+--[[--
+Initializes even listener that swithces GUI layout representation on demand.
+Namely, displays different labels depending on selected quest type,
+in the quest creation pop-up frame (tooltip).
+@function initGUIHandlerTooltipRadioButtons
+]]
 local function initGUIHandlerTooltipRadioButtons(tooltip, radioButtons, fields, fieldLabels)
   assert(tooltip ~= nil)
 
@@ -1647,6 +2038,10 @@ local function initGUIHandlerTooltipRadioButtons(tooltip, radioButtons, fields, 
   end
 end
 
+--[[--
+Returns values that are currently held by the GUI input boxes.
+@function getArgs
+]]
 local function getArgs(fields)
   local arg0, arg1, arg2, arg3
 
@@ -1677,6 +2072,15 @@ local function getArgs(fields)
   return arg0, arg1, arg2, arg3
 end
 
+--[[--
+Initializes an event handler that reads data from the input fields,
+and then creates and persists new quests accordingly.
+@function initGUIHandlerTooltipNavAccept
+@see createQuestSmart
+@see getArgs
+@see getSelectedGoalName
+@see updateProgress
+]]
 local function initGUIHandlerTooltipNavAccept(navAccept, tooltip, radioButtons, fields, main, slider, questFrames)
   assert(navAccept ~= nil)
   assert(tooltip ~= nil)
@@ -1705,6 +2109,9 @@ local function initGUIHandlerTooltipNavAccept(navAccept, tooltip, radioButtons, 
   return
 end
 
+--[[--
+@function initGUIHandlerTooltipNavReject
+]]
 local function initGUIHandlerTooltipNavReject(navReject, tooltip)
   assert(navReject ~= nil)
   assert(tooltip ~= nil)
@@ -1719,6 +2126,13 @@ end
 
 --[[ GUI: Init. ]]--
 
+--[[--
+Initializes all of the GUI components.
+It also acts as a context holder,
+ensuring that every GUI piece is granted access to it's dependencies,
+and only it's dependencies.
+@function initGUI
+]]
 local function initGUI(givenRoot)
   local root        = initGUIRoot(givenRoot)
   assert(root ~= nil)
@@ -1833,6 +2247,12 @@ Initialization.
 
 local bquest = CreateFrame('FRAME', 'BQuest', UIParent) or {}
 
+--[[--
+Initializes all of the add-on.
+It must be called after the persistence mechanism is loaded.
+@function init
+@see initGUI
+]]
 local function init(self)
   initGUI(self)
   initAPI(self)
