@@ -7,7 +7,7 @@ BQuest add-on for World of Warcraft: Wrath of the Lich King game.
 Constants.
 @section constants
 ]]
-local MAX_ATTRIBUTES = 8
+local MAX_ATTRIBUTES = 16
 local MAX_QUESTS = 256
 
 local function getSupportedQuestGoals()
@@ -48,21 +48,6 @@ local function isSupportedQuestGoal(targetGoalName)
   return result
 end
 
-local function questPrototypeCollectItem(givenItemId, givenItemAmount)
-  assert(givenItemId ~= nil)
-  assert("number" == type(givenItemId))
-  assert(givenItemId > 0)
-  assert(givenItemAmount ~= nil)
-  assert("number" == type(givenItemAmount))
-  assert(givenItemAmount >= 1)
-
-  return {
-    goalName = 'CollectItem',
-    itemId = math.ceil(givenItemId),
-    itemAmount = math.max(math.ceil(givenItemAmount), 1)
-  }
-end
-
 local function questPrototypeDeliverItem(givenItemId, givenItemAmount, givenAddresseeUnitName)
   assert(givenItemId ~= nil)
   assert("number" == type(givenItemId))
@@ -79,24 +64,6 @@ local function questPrototypeDeliverItem(givenItemId, givenItemAmount, givenAddr
     itemId = math.ceil(givenItemId),
     itemAmount = math.ceil(math.max(givenItemAmount, 1)),
     addresseeUnitName = givenAddresseeUnitName
-  }
-end
-
-local function questPrototypeKillUnit(givenVictimUnitName, givenOptionalKillsAmount)
-  assert(givenVictimUnitName ~= nil)
-  assert("string" == type(givenVictimUnitName))
-  assert(string.len(givenVictimUnitName) >= 3)
-  if nil == givenOptionalKillsAmount then
-    givenOptionalKillsAmount = 1
-  end
-  assert(givenOptionalKillsAmount ~= nil)
-  assert("number" == type(givenOptionalKillsAmount))
-  assert(givenOptionalKillsAmount >= 1)
-
-  return {
-    goalName = 'KillUnit',
-    victimUnitName = givenVictimUnitName,
-    killsAmount = math.ceil(math.max(givenOptionalKillsAmount, 1))
   }
 end
 
@@ -219,9 +186,7 @@ local function isValidQuest(givenQuest)
   return result, optionalErrorMessage
 end
 
-local function createQuest(questPrototype)
-  local newQuest = {}
-
+local function applyDefaultAttributes(newQuest)
   newQuest.createdDateTable = date("*t")
 
   local d = newQuest.createdDateTable
@@ -254,7 +219,7 @@ local function createQuest(questPrototype)
   local defaultAttributesAmount = 4
   local operationsLimit = MAX_ATTRIBUTES - defaultAttributesAmount
   local operationsPerformed = 0
-  for attribute, value in pairs(questPrototype) do
+  for attribute, value in pairs(newQuest) do
     newQuest[attribute] = value
     operationsPerformed = operationsPerformed + 1
     assert(operationsPerformed <= operationsLimit)
@@ -262,6 +227,81 @@ local function createQuest(questPrototype)
 
   assert(newQuest ~= nil)
   assert(isValidQuest(newQuest))
+
+  return newQuest
+end
+
+local function isValidItemId(itemIdToCheck)
+  assert(itemIdToCheck ~= nil)
+  local optionalErrorMessage = nil
+  local result = true
+
+  result = "number" == type(itemIdToCheck) and result
+  if not result then
+    optionalErrorMessage = 'Not a number.'
+    return result, optionalErrorMessage
+  end
+
+  result = itemIdToCheck >= 1 and itemIdToCheck <= 999999 and result
+  if not result then
+    optionalErrorMessage = 'Number not in range.'
+    return result, optionalErrorMessage
+  end
+
+  result = 0 == math.fmod(itemIdToCheck) and result
+  if not result then
+    optionalErrorMessage = 'Number not an integer.'
+    return result, optionalErrorMessage
+  end
+
+  --[[ The `GetItemInfo` check may fail if the item concept exists,
+    but was not encountered by the player. ]]--
+  result = nil ~= GetItemInfo(itemIdToCheck) and result
+  if not result then
+    optionalErrorMessage = 'No item concept with the given identifier found.'
+    return result, optionalErrorMessage
+  end
+
+  return result, optionalErrorMessage
+end
+
+local function createQuestCollectItem(givenItemId, givenItemAmount)
+  assert(givenItemId ~= nil)
+  assert(isValidItemId(givenItemId))
+
+  assert(givenItemAmount ~= nil)
+  assert("number" == type(givenItemAmount))
+  assert(givenItemAmount >= 1)
+  assert(givenItemAmount <= 1024)
+
+  local newQuest = {
+    goalName = 'CollectItem',
+    itemId = math.ceil(givenItemId),
+    itemAmount = math.min(math.max(math.ceil(givenItemAmount), 1), 1024)
+  }
+  applyDefaultAttributes(newQuest)
+
+  return newQuest
+end
+
+local function createQuestKillUnit(givenVictimUnitName, givenOptionalKillsAmount)
+  assert(givenVictimUnitName ~= nil)
+  assert("string" == type(givenVictimUnitName))
+  assert(string.len(givenVictimUnitName) >= 3)
+  if nil == givenOptionalKillsAmount then
+    givenOptionalKillsAmount = 1
+  end
+  assert(givenOptionalKillsAmount ~= nil)
+  assert("number" == type(givenOptionalKillsAmount))
+  assert(givenOptionalKillsAmount >= 1)
+  assert(givenOptionalKillsAmount <= 1024)
+
+  local newQuest = {
+    goalName = 'KillUnit',
+    victimUnitName = givenVictimUnitName,
+    killsAmount = math.ceil(math.min(math.max(givenOptionalKillsAmount, 1), 1024))
+  }
+  applyDefaultAttributes(newQuest)
 
   return newQuest
 end
@@ -338,10 +378,6 @@ end
 
 --[[ Public API. ]]--
 
-local function createQuestCollectItem(itemId, itemAmount)
-  return createQuest(questPrototypeCollectItem(itemId, itemAmount))
-end
-
 local function getItemIdFromItemLink(itemLink)
   --[[ http://wowwiki.wikia.com/wiki/ItemLink ]]--
   local exp = "|?c?f?f?(%x*)"
@@ -369,13 +405,7 @@ local function createQuestSmart(givenGoalName, ...)
     assert('string' == type(itemLink))
 
     local itemId = getItemIdFromItemLink(itemLink)
-    assert(itemId ~= nil)
-    assert('number' == type(itemId), 'Expected item identifier. Got: ' .. itemId)
-    assert(itemId >= 1 and itemId <= 999999)
-
-    local template = 'Cannot find the item concept "%s" (%d).'
-    local itemConceptMissingErr = string.format(template, itemLink, itemId)
-    assert(GetItemInfo(itemId) ~= nil, itemConceptMissingErr)
+    assert(isValidItemId(itemId))
 
     local itemAmount = select(2, ...)
     itemAmount = tonumber(itemAmount)
@@ -388,13 +418,21 @@ local function createQuestSmart(givenGoalName, ...)
 
     newQuest, optionalErrorMessage = createQuestCollectItem(itemId, itemAmount)
   elseif 'DeliverItem' == givenGoalName then
-    newQuest, optionalErrorMessage = createQuest(questPrototypeDeliverItem(...))
+    newQuest, optionalErrorMessage = applyDefaultAttributes(questPrototypeDeliverItem(...))
   elseif 'KillUnit'  == givenGoalName then
-    newQuest, optionalErrorMessage = createQuest(questPrototypeKillUnit(...))
+    local victimName = select(1, ...)
+    assert(victimName ~= nil)
+    assert('string' == type(victimName))
+
+    local k0 = select(2, ...)
+    local k1 = tonumber(k0)
+    local killsAmount = math.min(math.max(k1, 1), 1024)
+
+    newQuest, optionalErrorMessage = createQuestKillUnit(victimName, killsAmount)
   elseif 'LearnSkill' == givenGoalName then
-    newQuest, optionalErrorMessage = createQuest(questPrototypeLearnSkill(...))
+    newQuest, optionalErrorMessage = applyDefaultAttributes(questPrototypeLearnSkill(...))
   elseif 'UseSkill' == givenGoalName then
-    newQuest, optionalErrorMessage = createQuest(questPrototypeUseSkill(...))
+    newQuest, optionalErrorMessage = applyDefaultAttributes(questPrototypeUseSkill(...))
   else
     optionalErrorMessage = 'Unsupported quest goal or some other error.'
   end
@@ -582,6 +620,23 @@ local function getQuestDescription(givenQuest, givenProgress)
     local itemAmount = givenProgress.itemAmount or 0
     questDescription = string.format('Collect %d of %s (%d collected).',
     givenQuest.itemAmount, itemName, itemAmount)
+  elseif 'KillUnit' == givenQuest.goalName then
+    local killsAmount = givenProgress.killsAmount or 0
+    if 1 == givenQuest.killsAmount then
+      if 0 == killsAmount then
+        questDescription = string.format('Kill %s (alive).',
+        givenQuest.victimUnitName)
+      elseif 1 == killsAmount then
+        questDescription = string.format('Kill %s (dead).',
+        givenQuest.victimUnitName)
+      else
+        questDescription = string.format('Kill %s (dead %d times).',
+        givenQuest.victimUnitName, killsAmount)
+      end
+    else
+      questDescription = string.format('Kill %d of %s (%d killed).',
+      givenQuest.killsAmount, givenQuest.victimUnitName, killsAmount)
+    end
   else
     questDescription = string.format("Goal: %s. Progress is unknown.",
     givenQuest.goalName)
@@ -633,25 +688,33 @@ local function updateProgressCollectItem()
   end)
 end
 
+local function updateProgressKillUnit(givenVictimName)
+  assert(givenVictimName ~= nil)
+  assert('string' == type(givenVictimName))
+
+  local function updateProgressKillUnitCallback(quest, progress)
+    if 'KillUnit' == quest.goalName then
+      if quest.victimUnitName == givenVictimName then
+        if nil == progress.killsAmount then
+          progress.killsAmount = 0
+        end
+        progress.killsAmount = progress.killsAmount + 1
+      end
+    end
+  end
+  updateProgress(updateProgressKillUnitCallback)
+end
+
 --[[ TODO ]]--
 
 --[[ API. ]]--
 
 local function initAPI(root)
-  root.getSupportedQuestGoals = getSupportedQuestGoals
-  root.isSupportedQuestGoal = isSupportedQuestGoal
-  root.isValidQuest = isValidQuest
-  root.createQuestSmart = createQuestSmart
-  root.wipeQuest = wipeQuest
-
-  root:RegisterEvent('BAG_UPDATE')
-  local function rootCallback(self, event)
-    assert(self ~= nil)
-    if 'BAG_UPDATE' == event then
-      updateProgressCollectItem()
-    end
-  end
-  root:SetScript('OnEvent', rootCallback)
+  root.api = {}
+  root.api.createQuestCollectItem = createQuestCollectItem
+  root.api.createQuestKillUnit = createQuestKillUnit
+  --[[root.api.createQuestUseSkill = createQuestUseSkill]]--
+  root.api.destroyQuest = wipeQuest
 end
 
 
@@ -1277,6 +1340,25 @@ local function initGUIHandlerRoot(root, main, slider, questFrames)
   assert(questFrames ~= nil)
   assert('table' == type(questFrames))
 
+  root:RegisterEvent('BAG_UPDATE')
+  root:RegisterEvent('COMBAT_LOG_EVENT_UNFILTERED')
+  local function rootCallback(self, event, ...)
+    assert(self ~= nil)
+    if 'BAG_UPDATE' == event then
+      updateProgressCollectItem()
+      updateQuestFrames(main, slider, questFrames)
+    elseif 'COMBAT_LOG_EVENT_UNFILTERED' == event then
+      local combatEvent = select(2, ...)
+      --[[ Use 'UNIT_DIED' for friendly. ]]--
+      if 'PARTY_KILL' == combatEvent then
+        local victimName = select(7, ...)
+        updateProgressKillUnit(victimName)
+        updateQuestFrames(main, slider, questFrames)
+      end
+    end
+  end
+  root:SetScript('OnEvent', rootCallback)
+
   local function rootOnShowHook()
     updateSlider(slider)
     updateQuestFrames(main, slider, questFrames)
@@ -1433,6 +1515,7 @@ local function initGUIHandlerTooltipRadioButtons(tooltip, radioButtons, fields, 
   local function clearGoalPerspective()
     for i = 1, #fields do
       fields[i]:Hide()
+      fields[i]:SetNumeric(false)
     end
     for i = 1, #fieldLabels do
       fieldLabels[i]:SetText(nil)
@@ -1443,6 +1526,7 @@ local function initGUIHandlerTooltipRadioButtons(tooltip, radioButtons, fields, 
     clearGoalPerspective()
     fields[1]:Show()
     fields[2]:Show()
+    fields[2]:SetNumeric(true)
     fieldLabels[1]:SetText('Item link')
     fieldLabels[2]:SetText('Item amount')
   end
@@ -1451,14 +1535,16 @@ local function initGUIHandlerTooltipRadioButtons(tooltip, radioButtons, fields, 
     clearGoalPerspective()
     fields[1]:Show()
     fields[2]:Show()
-    fieldLabels[1]:SetText("Target's name")
-    fieldLabels[2]:SetText('Kills amount')
+    fields[2]:SetNumeric(true)
+    fieldLabels[1]:SetText("Victim's name")
+    fieldLabels[2]:SetText('|cff888888Kills amount|r')
   end
 
   local function applyUseSkillGoalPerspective()
     clearGoalPerspective()
     fields[1]:Show()
     fields[2]:Show()
+    fields[2]:SetNumeric(true)
     fields[3]:Show()
     fieldLabels[1]:SetText('Skill link')
     fieldLabels[2]:SetText('Uses amount')
@@ -1490,8 +1576,33 @@ local function initGUIHandlerTooltipRadioButtons(tooltip, radioButtons, fields, 
 end
 
 local function getArgs(fields)
-  return fields[1]:GetText(), fields[2]:GetText(),
-  fields[3]:GetText(), fields[4]:GetText()
+  local arg0, arg1, arg2, arg3
+
+  if fields[1]:IsNumeric() then
+    arg0 = fields[1]:GetNumber()
+  else
+    arg0 = fields[1]:GetText()
+  end
+
+  if fields[2]:IsNumeric() then
+    arg1 = fields[2]:GetNumber()
+  else
+    arg1 = fields[2]:GetText()
+  end
+
+  if fields[3]:IsNumeric() then
+    arg2 = fields[3]:GetNumber()
+  else
+    arg2 = fields[3]:GetText()
+  end
+
+  if fields[4]:IsNumeric() then
+    arg3 = fields[4]:GetNumber()
+  else
+    arg3 = fields[4]:GetText()
+  end
+
+  return arg0, arg1, arg2, arg3
 end
 
 local function initGUIHandlerTooltipNavAccept(navAccept, tooltip, radioButtons, fields, main, slider, questFrames)
