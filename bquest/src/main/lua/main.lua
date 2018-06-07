@@ -12,7 +12,7 @@ local MAX_QUESTS = 256
 
 local function getSupportedQuestGoals()
   return {
-    'CollectItem', 'KillUnit', 'UseSkill'
+    'CastSpell', 'CollectItem', 'KillUnit'
   }
 end
 
@@ -43,63 +43,6 @@ local function isSupportedQuestGoal(targetGoalName)
       result = true
       break
     end
-  end
-
-  return result
-end
-
-local function questPrototypeDeliverItem(givenItemId, givenItemAmount, givenAddresseeUnitName)
-  assert(givenItemId ~= nil)
-  assert("number" == type(givenItemId))
-  assert(givenItemId > 0)
-  assert(givenItemAmount ~= nil)
-  assert("number" == type(givenItemAmount))
-  assert(givenItemAmount >= 1)
-  assert(givenAddresseeUnitName ~= nil)
-  assert("string" == type(givenAddresseeUnitName))
-  assert(string.len(givenAddresseeUnitName) >= 3)
-
-  return {
-    goalName = 'DeliverItem',
-    itemId = math.ceil(givenItemId),
-    itemAmount = math.ceil(math.max(givenItemAmount, 1)),
-    addresseeUnitName = givenAddresseeUnitName
-  }
-end
-
-local function questPrototypeLearnSkill(givenSkillId)
-  assert(givenSkillId ~= nil)
-  assert("number" == type(givenSkillId))
-  assert(givenSkillId > 0)
-
-  return {
-    goalName = 'LearnSkill',
-    skillId = math.ceil(givenSkillId)
-  }
-end
-
-local function questPrototypeUseSkill(givenSkillId, givenUsagesAmount, givenOptionalTargetUnitName)
-  assert(givenSkillId ~= nil)
-  assert("number" == type(givenSkillId))
-  assert(givenSkillId > 0)
-  assert(givenUsagesAmount ~= nil)
-  assert("number" == type(givenUsagesAmount))
-  assert(givenUsagesAmount >= 1)
-
-  if givenOptionalTargetUnitName ~= nil then
-    assert(givenOptionalTargetUnitName ~= nil)
-    assert("string" == type(givenOptionalTargetUnitName))
-    assert(string.len(givenOptionalTargetUnitName) >= 3)
-  end
-
-  local result = {
-    goalName = 'UseSkill',
-    skillId = math.ceil(givenSkillId),
-    usagesAmount = math.ceil(givenUsagesAmount)
-  }
-
-  if givenOptionalTargetUnitName ~= nil then
-    result.optionalTargetUnitName = givenOptionalTargetUnitName
   end
 
   return result
@@ -248,7 +191,7 @@ local function isValidItemId(itemIdToCheck)
     return result, optionalErrorMessage
   end
 
-  result = 0 == math.fmod(itemIdToCheck) and result
+  result = 0 == select(2, math.modf(itemIdToCheck)) and result
   if not result then
     optionalErrorMessage = 'Number not an integer.'
     return result, optionalErrorMessage
@@ -301,6 +244,69 @@ local function createQuestKillUnit(givenVictimUnitName, givenOptionalKillsAmount
     victimUnitName = givenVictimUnitName,
     killsAmount = math.ceil(math.min(math.max(givenOptionalKillsAmount, 1), 1024))
   }
+  applyDefaultAttributes(newQuest)
+
+  return newQuest
+end
+
+local function isValidSpellId(spellIdToCheck)
+  assert(spellIdToCheck ~= nil)
+  local optionalErrorMessage = nil
+  local result = true
+
+  result = "number" == type(spellIdToCheck) and result
+  if not result then
+    optionalErrorMessage = 'Not a number.'
+    return result, optionalErrorMessage
+  end
+
+  result = spellIdToCheck >= 1 and spellIdToCheck <= 999999 and result
+  if not result then
+    optionalErrorMessage = 'Number not in range.'
+    return result, optionalErrorMessage
+  end
+
+  result = 0 == select(2, math.modf(spellIdToCheck)) and result
+  if not result then
+    optionalErrorMessage = 'Number not an integer.'
+    return result, optionalErrorMessage
+  end
+
+  result = nil ~= GetSpellInfo(spellIdToCheck) and result
+  if not result then
+    optionalErrorMessage = 'No spell concept with the given identifier found.'
+    return result, optionalErrorMessage
+  end
+
+  return result, optionalErrorMessage
+end
+
+local function createQuestCastSpell(givenSkillId, givenUsagesAmount, givenOptionalTargetUnitName)
+  assert(givenSkillId ~= nil)
+  assert(isValidSpellId(givenSkillId))
+  assert(givenUsagesAmount ~= nil)
+  assert("number" == type(givenUsagesAmount))
+  assert(givenUsagesAmount >= 1)
+
+  if "" == givenOptionalTargetUnitName then
+    givenOptionalTargetUnitName = nil
+  end
+  if givenOptionalTargetUnitName ~= nil then
+    assert(givenOptionalTargetUnitName ~= nil)
+    assert("string" == type(givenOptionalTargetUnitName))
+    assert(string.len(givenOptionalTargetUnitName) >= 3)
+  end
+
+  local newQuest = {
+    goalName = 'CastSpell',
+    spellId = math.ceil(givenSkillId),
+    castsAmount = math.ceil(givenUsagesAmount)
+  }
+
+  if givenOptionalTargetUnitName ~= nil then
+    newQuest.optionalTargetUnitName = givenOptionalTargetUnitName
+  end
+
   applyDefaultAttributes(newQuest)
 
   return newQuest
@@ -388,6 +394,16 @@ local function getItemIdFromItemLink(itemLink)
   return tonumber(Id)
 end
 
+local function getSpellIdFromSpellLink(spellLink)
+  --[[ http://wowwiki.wikia.com/wiki/ItemLink ]]--
+  local exp = "|?c?f?f?(%x*)"
+  exp = exp .. "|?H?([^:]*):?(%d+):?(%d*):?(%d*):?(%d*):?(%d*)"
+  exp = exp .. ":?(%d*):?(%-?%d*):?(%-?%d*):?(%d*):?(%d*):?(%-?%d*)"
+  exp = exp .. "|?h?%[?([^%[%]]*)%]?|?h?|?r?"
+  local _, _, _, _, Id = string.find(spellLink, exp)
+  return tonumber(Id)
+end
+
 local function createQuestSmart(givenGoalName, ...)
   --[[
   TODO
@@ -399,9 +415,26 @@ local function createQuestSmart(givenGoalName, ...)
   local newQuest = nil
   local optionalErrorMessage
 
-  if 'CollectItem' == givenGoalName then
+  if 'CastSpell' == givenGoalName then
+    local spellLink = select(1, ...)
+    assert(spellLink ~= nil)
+    assert('string' == type(spellLink))
+
+    local spellId = getSpellIdFromSpellLink(spellLink)
+    assert(spellId ~= nil)
+    assert(isValidSpellId(spellId))
+
+    local castsAmount = select(2, ...)
+    castsAmount = math.min(math.max(math.ceil(tonumber(castsAmount)), 1), 1024)
+
+    local optionalTargetUnitName = select(3, ...) or nil
+    optionalTargetUnitName = string.gsub(optionalTargetUnitName, "^%s*(.-)%s*$", "%1")
+    print(optionalTargetUnitName)
+
+    newQuest, optionalErrorMessage = createQuestCastSpell(spellId, castsAmount, optionalTargetUnitName)
+  elseif 'CollectItem' == givenGoalName then
     local itemLink = select(1, ...)
-    assert(itemLink ~= nil, 'Cannot find the item.')
+    assert(itemLink ~= nil)
     assert('string' == type(itemLink))
 
     local itemId = getItemIdFromItemLink(itemLink)
@@ -417,8 +450,6 @@ local function createQuestSmart(givenGoalName, ...)
     itemAmount = math.ceil(itemAmount)
 
     newQuest, optionalErrorMessage = createQuestCollectItem(itemId, itemAmount)
-  elseif 'DeliverItem' == givenGoalName then
-    newQuest, optionalErrorMessage = applyDefaultAttributes(questPrototypeDeliverItem(...))
   elseif 'KillUnit'  == givenGoalName then
     local victimName = select(1, ...)
     assert(victimName ~= nil)
@@ -429,10 +460,6 @@ local function createQuestSmart(givenGoalName, ...)
     local killsAmount = math.min(math.max(k1, 1), 1024)
 
     newQuest, optionalErrorMessage = createQuestKillUnit(victimName, killsAmount)
-  elseif 'LearnSkill' == givenGoalName then
-    newQuest, optionalErrorMessage = applyDefaultAttributes(questPrototypeLearnSkill(...))
-  elseif 'UseSkill' == givenGoalName then
-    newQuest, optionalErrorMessage = applyDefaultAttributes(questPrototypeUseSkill(...))
   else
     optionalErrorMessage = 'Unsupported quest goal or some other error.'
   end
@@ -615,7 +642,20 @@ local function getQuestDescription(givenQuest, givenProgress)
   assert("table" == type(givenProgress))
 
   local questDescription
-  if 'CollectItem' == givenQuest.goalName then
+  if 'CastSpell' == givenQuest.goalName then
+    local spellName = GetSpellInfo(givenQuest.spellId)
+    assert(spellName ~= nil)
+    assert('string' == type(spellName))
+
+    if nil == givenQuest.optionalTargetUnitName then
+      questDescription = string.format('Cast %s %d times (%d times casted).',
+      spellName, givenQuest.castsAmount, givenProgress.castsAmount or 0)
+    else
+      questDescription = string.format('Cast %s on %s %d times (%d times casted).',
+      spellName, givenQuest.optionalTargetUnitName, givenQuest.castsAmount,
+      givenProgress.castsAmount or 0)
+    end
+  elseif 'CollectItem' == givenQuest.goalName then
     local itemName = requestItemName(givenQuest.itemId)
     local itemAmount = givenProgress.itemAmount or 0
     questDescription = string.format('Collect %d of %s (%d collected).',
@@ -705,6 +745,26 @@ local function updateProgressKillUnit(givenVictimName)
   updateProgress(updateProgressKillUnitCallback)
 end
 
+local function updateProgressCastSpell(givenSpellId, givenOptionalTargetUnitName)
+  assert(givenSpellId ~= nil)
+  assert(isValidSpellId(givenSpellId))
+
+  local function updateProgressCastSpellCallback(quest, progress)
+    if 'CastSpell' == quest.goalName then
+      if quest.spellId == givenSpellId then
+        if (nil == quest.optionalTargetUnitName or
+           givenOptionalTargetUnitName == quest.optionalTargetUnitName) then
+          if nil == progress.castsAmount then
+            progress.castsAmount = 0
+          end
+          progress.castsAmount = progress.castsAmount + 1
+        end
+      end
+    end
+  end
+  updateProgress(updateProgressCastSpellCallback)
+end
+
 --[[ TODO ]]--
 
 --[[ API. ]]--
@@ -713,7 +773,7 @@ local function initAPI(root)
   root.api = {}
   root.api.createQuestCollectItem = createQuestCollectItem
   root.api.createQuestKillUnit = createQuestKillUnit
-  --[[root.api.createQuestUseSkill = createQuestUseSkill]]--
+  root.api.createQuestCastSpell = createQuestCastSpell
   root.api.destroyQuest = wipeQuest
 end
 
@@ -1354,6 +1414,15 @@ local function initGUIHandlerRoot(root, main, slider, questFrames)
         local victimName = select(7, ...)
         updateProgressKillUnit(victimName)
         updateQuestFrames(main, slider, questFrames)
+      elseif 'SPELL_DAMAGE' == combatEvent or 'SPELL_HEAL' == combatEvent then
+        local caster = select(4, ...)
+        if UnitName('player') == caster then
+          local spellId = select(9, ...)
+          spellId = tonumber(spellId)
+          local targetUnitName = select(7, ...)
+          updateProgressCastSpell(spellId, targetUnitName)
+          updateQuestFrames(main, slider, questFrames)
+        end
       end
     end
   end
@@ -1513,8 +1582,11 @@ local function initGUIHandlerTooltipRadioButtons(tooltip, radioButtons, fields, 
   end
 
   local function clearGoalPerspective()
+    local emptyString = ""
     for i = 1, #fields do
       fields[i]:Hide()
+      --[[ Text needs to be cleared to avoid reading corrupt values. ]]--
+      fields[i]:SetText(emptyString)
       fields[i]:SetNumeric(false)
     end
     for i = 1, #fieldLabels do
@@ -1540,14 +1612,14 @@ local function initGUIHandlerTooltipRadioButtons(tooltip, radioButtons, fields, 
     fieldLabels[2]:SetText('|cff888888Kills amount|r')
   end
 
-  local function applyUseSkillGoalPerspective()
+  local function applyCastSpellGoalPerspective()
     clearGoalPerspective()
     fields[1]:Show()
     fields[2]:Show()
     fields[2]:SetNumeric(true)
     fields[3]:Show()
-    fieldLabels[1]:SetText('Skill link')
-    fieldLabels[2]:SetText('Uses amount')
+    fieldLabels[1]:SetText('Spell link')
+    fieldLabels[2]:SetText('Casts amount')
     fieldLabels[3]:SetText("|cff888888Target's name|r")
   end
 
@@ -1556,12 +1628,12 @@ local function initGUIHandlerTooltipRadioButtons(tooltip, radioButtons, fields, 
     assert(selectedGoalName ~= nil)
     assert(isSupportedQuestGoal(selectedGoalName))
 
-    if 'CollectItem' == selectedGoalName then
+    if 'CastSpell' == selectedGoalName then
+      applyCastSpellGoalPerspective()
+    elseif 'CollectItem' == selectedGoalName then
       applyCollectItemGoalPerspective()
     elseif 'KillUnit' == selectedGoalName then
       applyKillUnitGoalPerspective()
-    elseif 'UseSkill' == selectedGoalName then
-      applyUseSkillGoalPerspective()
     else
       error('Unknown goal perspective to apply.')
     end
