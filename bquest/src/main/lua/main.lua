@@ -2234,6 +2234,55 @@ Initialization.
 
 local bquest = CreateFrame('FRAME', 'BQuest', UIParent) or {}
 
+local function initErrorHandler()
+  --[[
+    See http://wowwiki.wikia.com/wiki/Creating_simple_pop-up_dialog_boxes
+  ]]--
+  StaticPopupDialogs['BQUEST_ERROR'] = {
+    text = 'Empty error message.',
+    button1 = 'Close',
+    OnAccept = function()
+      StaticPopupDialogs['BQUEST_ERROR'].text = 'Empty error message.'
+    end,
+    timeout = 32,
+    whileDead = true,
+    hideOnEscape = true,
+    --[[
+      avoid some UI taint,
+      See http://www.wowace.com/announcements/how-to-avoid-some-ui-taint/
+    ]]--
+    preferredIndex = 3,
+  }
+
+  local function logError(errorMessage)
+    if nil == BQuestErrors or 'table' ~= type(BQuestErrors) then
+      BQuestErrors = {}
+    end
+    local logEntry = {
+      player = UnitName('player'),
+      realm = GetRealmName(),
+      message = errorMessage,
+      date = date()
+    }
+    tinsert(BQuestErrors, logEntry)
+  end
+
+  local function showErrorPopupWithMessage(givenMessage)
+    StaticPopupDialogs['BQUEST_ERROR'].text = givenMessage
+    StaticPopup_Show('BQUEST_ERROR')
+  end
+
+  local oldErrorHandler = geterrorhandler()
+  local function errorHandlerCallback(errorMessage, ...)
+    logError(errorMessage)
+
+    showErrorPopupWithMessage(errorMessage)
+
+    oldErrorHandler(errorMessage, ...)
+  end
+  seterrorhandler(errorHandlerCallback)
+end
+
 --[[--
 Initializes all of the add-on.
 It must be called after the persistence mechanism is loaded.
@@ -2244,6 +2293,7 @@ local function init(self)
   initGUI(self)
   initAPI(self)
   initCLI(self)
+  initErrorHandler()
 end
 
 bquest:RegisterEvent("ADDON_LOADED")
