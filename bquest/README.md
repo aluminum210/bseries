@@ -65,3 +65,6 @@ myFrame:SetScript('OnEvent', myFrameCallback)
 
 Linting is part of the build cycle.
 Therefore proper source code formatting is necessary.
+## Changelog.
+### 1.2.0
+* [x] #38 Introduce error handler and error messages.
